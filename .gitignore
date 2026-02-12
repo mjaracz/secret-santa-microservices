@@ -1,0 +1,14 @@
+PLANNING.md
+CLAUDE.md
+OVERVIEW.md
+
+**/application-local.properties
+
+**/.env
+
+.idea/
+.vscode/
+.claude/
+**/target
+
+**/.mvn
