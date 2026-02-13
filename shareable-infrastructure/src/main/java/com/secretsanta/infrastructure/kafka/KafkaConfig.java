@@ -52,7 +52,7 @@ public class KafkaConfig {
     }
 
     @Bean
-    public KafkaServiceBus kafkaServiceBus(KafkaTemplate<String, String> kafkaTemplate, ObjectMapper objectMapper) {
-        return new KafkaServiceBus(kafkaTemplate, objectMapper);
+    public KafkaServiceBus kafkaServiceBus(KafkaTemplate<String, String> kafkaTemplate) {
+        return new KafkaServiceBus(kafkaTemplate, new ObjectMapper());
     }
 }
