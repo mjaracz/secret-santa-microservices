@@ -18,25 +18,26 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class UserController {
 
-    private final KafkaServiceBus serviceBus;
+        private final KafkaServiceBus serviceBus;
 
-    @Value("${kafka.topics.user-commands}")
-    private String userCommandsTopic;
+        @Value("${kafka.topics.user-commands}")
+        private String userCommandsTopic;
 
-    @PostMapping
-    public Mono<ResponseEntity<CommandAcceptedResponse>> createUser(
-            @RequestBody CreateUserRequest request) {
-        CreateUserCommand command = CreateUserCommand.builder()
-                .email(request.getEmail())
-                .name(request.getName())
-                .password(request.getPassword())
-                .build();
-        command.initDefaults("CREATE_USER");
+        @PostMapping
+        public Mono<ResponseEntity<CommandAcceptedResponse>> createUser(
+                        @RequestBody CreateUserRequest request) {
+                CreateUserCommand command = CreateUserCommand.builder()
+                                .email(request.getEmail())
+                                .name(request.getName())
+                                .password(request.getPassword())
+                                .build();
+                command.initDefaults("CREATE_USER");
 
-        serviceBus.emitCommand(userCommandsTopic, command.getCommandId(), command);
+                serviceBus.emitCommand(userCommandsTopic, command.getCommandId(), command);
 
-        return Mono.just(ResponseEntity.accepted()
-                .body(new CommandAcceptedResponse(command.getCommandId(),
-                        "User creation command accepted")));
-    }
+                return Mono.just(ResponseEntity.accepted()
+                                .body(new CommandAcceptedResponse(command.getCommandId(),
+                                                String.format("CreateUserCommand successfully created user with email %s",
+                                                                request.getEmail()))));
+        }
 }

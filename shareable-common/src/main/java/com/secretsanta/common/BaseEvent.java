@@ -3,6 +3,10 @@ package com.secretsanta.common;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.secretsanta.common.group.events.GroupCreatedEvent;
+import com.secretsanta.common.group.events.GroupDeletedEvent;
+import com.secretsanta.common.group.events.GroupUpdatedEvent;
+import com.secretsanta.common.group.events.MemberAddedEvent;
 import com.secretsanta.common.user.events.UserCreatedEvent;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -18,7 +22,11 @@ import java.util.UUID;
 @NoArgsConstructor
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "eventType")
 @JsonSubTypes({
-		@JsonSubTypes.Type(value = UserCreatedEvent.class, name = "USER_CREATED")
+		@JsonSubTypes.Type(value = UserCreatedEvent.class, name = "USER_CREATED"),
+		@JsonSubTypes.Type(value = GroupCreatedEvent.class, name = "GROUP_CREATED"),
+		@JsonSubTypes.Type(value = GroupUpdatedEvent.class, name = "GROUP_UPDATED"),
+		@JsonSubTypes.Type(value = GroupDeletedEvent.class, name = "GROUP_DELETED"),
+		@JsonSubTypes.Type(value = MemberAddedEvent.class, name = "MEMBER_ADDED")
 })
 public class BaseEvent {
 

@@ -2,7 +2,7 @@ package com.secretsanta.common.group.commands;
 
 import com.secretsanta.common.BaseCommand;
 
-import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -16,20 +16,17 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
-public class AddMemberCommand extends BaseCommand {
+public class UpdateGroupCommand extends BaseCommand {
 
 	@NotBlank(message = "Group ID is required")
 	private String groupId;
 
-	@NotBlank(message = "User ID is required")
-	private String userId;
+	@Size(min = 2, max = 255, message = "Group name must be between 2 and 255 characters")
+	private String name;
 
-	@Email(message = "Email should be valid")
-	private String userEmail;
+	@Size(max = 1000, message = "Description must be at most 1000 characters")
+	private String description;
 
-	@NotBlank(message = "Name is required")
-	@Size(min = 2, max = 255, message = "Name must be between 2 and 255 characters")
-	private String userName;
-
-	private String role;
+	@Min(value = 3, message = "A group must have at least 3 members")
+	private int maxMembers;
 }

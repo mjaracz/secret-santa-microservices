@@ -3,6 +3,10 @@ package com.secretsanta.common;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.secretsanta.common.group.commands.AddMemberCommand;
+import com.secretsanta.common.group.commands.CreateGroupCommand;
+import com.secretsanta.common.group.commands.DeleteGroupCommand;
+import com.secretsanta.common.group.commands.UpdateGroupCommand;
 import com.secretsanta.common.user.commands.CreateUserCommand;
 import com.secretsanta.common.user.commands.DeleteUserCommand;
 import com.secretsanta.common.user.commands.UpdateUserCommand;
@@ -22,7 +26,11 @@ import java.util.UUID;
 @JsonSubTypes({
 		@JsonSubTypes.Type(value = CreateUserCommand.class, name = "CREATE_USER"),
 		@JsonSubTypes.Type(value = UpdateUserCommand.class, name = "UPDATE_USER"),
-		@JsonSubTypes.Type(value = DeleteUserCommand.class, name = "DELETE_USER")
+		@JsonSubTypes.Type(value = DeleteUserCommand.class, name = "DELETE_USER"),
+		@JsonSubTypes.Type(value = CreateGroupCommand.class, name = "CREATE_GROUP"),
+		@JsonSubTypes.Type(value = UpdateGroupCommand.class, name = "UPDATE_GROUP"),
+		@JsonSubTypes.Type(value = DeleteGroupCommand.class, name = "DELETE_GROUP"),
+		@JsonSubTypes.Type(value = AddMemberCommand.class, name = "ADD_MEMBER")
 })
 public abstract class BaseCommand {
 

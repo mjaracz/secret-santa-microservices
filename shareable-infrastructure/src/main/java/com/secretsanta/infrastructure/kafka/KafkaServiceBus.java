@@ -64,8 +64,6 @@ public class KafkaServiceBus {
         log.info("Registered event handler for: {}", eventType.getSimpleName());
     }
 
-    // --- Inbound: consume messages ---
-
     public void handleCommandMessage(String json) {
         try {
             BaseCommand command = objectMapper.readValue(json, BaseCommand.class);
@@ -96,8 +94,6 @@ public class KafkaServiceBus {
         }
     }
 
-    // --- Outbound: publish messages ---
-
     public void emitCommand(String topic, String key, BaseCommand command) {
         log.info("Emitting command: type={}, key={}, topic={}", command.getCommandType(), key, topic);
         publish(topic, key, command);
@@ -107,8 +103,6 @@ public class KafkaServiceBus {
         log.info("Emitting event: type={}, key={}, topic={}", event.getEventType(), key, topic);
         publish(topic, key, event);
     }
-
-    // --- Internal dispatch ---
 
     private void dispatchCommand(BaseCommand command) {
         CommandHandlerEntry<?> entry = commandHandlers.get(command.getClass());
