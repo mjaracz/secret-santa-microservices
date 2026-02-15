@@ -3,6 +3,7 @@ package com.secretsanta.common;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.secretsanta.common.group.events.DrawCompletedEvent;
 import com.secretsanta.common.group.events.GroupCreatedEvent;
 import com.secretsanta.common.group.events.GroupDeletedEvent;
 import com.secretsanta.common.group.events.GroupUpdatedEvent;
@@ -26,7 +27,9 @@ import java.util.UUID;
 		@JsonSubTypes.Type(value = GroupCreatedEvent.class, name = "GROUP_CREATED"),
 		@JsonSubTypes.Type(value = GroupUpdatedEvent.class, name = "GROUP_UPDATED"),
 		@JsonSubTypes.Type(value = GroupDeletedEvent.class, name = "GROUP_DELETED"),
-		@JsonSubTypes.Type(value = MemberAddedEvent.class, name = "MEMBER_ADDED")
+		@JsonSubTypes.Type(value = MemberAddedEvent.class, name = "MEMBER_ADDED"),
+		@JsonSubTypes.Type(value = DrawCompletedEvent.class, name = "DRAW_COMPLETED"),
+		@JsonSubTypes.Type(value = CommandFailedEvent.class, name = "COMMAND_FAILED")
 })
 public class BaseEvent {
 
@@ -38,6 +41,9 @@ public class BaseEvent {
 
 	@JsonProperty("eventType")
 	private String eventType;
+
+	@JsonProperty("correlationId")
+	private String correlationId;
 
 	public void initDefaults(String type) {
 		if (this.eventId == null) {

@@ -5,6 +5,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
@@ -13,6 +14,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 @Configuration
 public class KafkaConfig {
@@ -52,7 +54,14 @@ public class KafkaConfig {
     }
 
     @Bean
-    public KafkaServiceBus kafkaServiceBus(KafkaTemplate<String, String> kafkaTemplate) {
-        return new KafkaServiceBus(kafkaTemplate, new ObjectMapper());
+    @ConditionalOnProperty(name = "kafka.reply.enabled", havingValue = "true")
+    public PendingReplyStore pendingReplyStore() {
+        return new PendingReplyStore();
+    }
+
+    @Bean
+    public KafkaServiceBus kafkaServiceBus(KafkaTemplate<String, String> kafkaTemplate,
+            Optional<PendingReplyStore> replyStore) {
+        return new KafkaServiceBus(kafkaTemplate, new ObjectMapper(), replyStore.orElse(null));
     }
 }

@@ -9,8 +9,10 @@ import org.springframework.retry.policy.SimpleRetryPolicy;
 import org.springframework.retry.support.RetryTemplate;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 public class KafkaServiceBus {
@@ -18,18 +20,30 @@ public class KafkaServiceBus {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
     private final RetryTemplate retryTemplate;
+    private final PendingReplyStore replyStore;
     private final Map<Class<? extends BaseCommand>, CommandHandlerEntry<?>> commandHandlers = new HashMap<>();
     private final Map<Class<? extends BaseEvent>, EventHandlerEntry<?>> eventHandlers = new HashMap<>();
 
     public KafkaServiceBus(KafkaTemplate<String, String> kafkaTemplate, ObjectMapper objectMapper) {
-        this(kafkaTemplate, objectMapper, buildDefaultRetryTemplate());
+        this(kafkaTemplate, objectMapper, buildDefaultRetryTemplate(), null);
     }
 
     public KafkaServiceBus(KafkaTemplate<String, String> kafkaTemplate, ObjectMapper objectMapper,
             RetryTemplate retryTemplate) {
+        this(kafkaTemplate, objectMapper, retryTemplate, null);
+    }
+
+    public KafkaServiceBus(KafkaTemplate<String, String> kafkaTemplate, ObjectMapper objectMapper,
+            PendingReplyStore replyStore) {
+        this(kafkaTemplate, objectMapper, buildDefaultRetryTemplate(), replyStore);
+    }
+
+    public KafkaServiceBus(KafkaTemplate<String, String> kafkaTemplate, ObjectMapper objectMapper,
+            RetryTemplate retryTemplate, PendingReplyStore replyStore) {
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
         this.retryTemplate = retryTemplate;
+        this.replyStore = replyStore;
     }
 
     @FunctionalInterface
@@ -40,6 +54,11 @@ public class KafkaServiceBus {
     @FunctionalInterface
     public interface EventHandler<T extends BaseEvent> {
         void handle(T event);
+    }
+
+    @FunctionalInterface
+    public interface FailureEmitter {
+        void emit(BaseCommand command, String reason);
     }
 
     private record CommandHandlerEntry<T extends BaseCommand>(Class<T> type, CommandHandler<T> handler) {
@@ -65,17 +84,29 @@ public class KafkaServiceBus {
     }
 
     public void handleCommandMessage(String json) {
+        handleCommandMessage(json, null);
+    }
+
+    public void handleCommandMessage(String json, FailureEmitter failureEmitter) {
+        BaseCommand command = null;
         try {
-            BaseCommand command = objectMapper.readValue(json, BaseCommand.class);
+            command = objectMapper.readValue(json, BaseCommand.class);
             log.info("Received command: type={}, id={}", command.getCommandType(), command.getCommandId());
+            final BaseCommand cmd = command;
             retryTemplate.execute(context -> {
-                dispatchCommand(command);
+                dispatchCommand(cmd);
                 return null;
             });
         } catch (IllegalArgumentException e) {
             log.error("Business rule violation: {}", e.getMessage());
+            if (failureEmitter != null && command != null) {
+                failureEmitter.emit(command, e.getMessage());
+            }
         } catch (Exception e) {
             log.error("Error processing command after retries exhausted", e);
+            if (failureEmitter != null && command != null) {
+                failureEmitter.emit(command, "Internal error: " + e.getMessage());
+            }
         }
     }
 
@@ -83,6 +114,7 @@ public class KafkaServiceBus {
         try {
             BaseEvent event = objectMapper.readValue(json, BaseEvent.class);
             log.info("Received event: type={}, id={}", event.getEventType(), event.getEventId());
+            completeReply(event);
             retryTemplate.execute(context -> {
                 dispatchEvent(event);
                 return null;
@@ -102,6 +134,26 @@ public class KafkaServiceBus {
     public void emitEvent(String topic, String key, BaseEvent event) {
         log.info("Emitting event: type={}, key={}, topic={}", event.getEventType(), key, topic);
         publish(topic, key, event);
+    }
+
+    public CompletableFuture<BaseEvent> sendAndReceive(String topic, String key, BaseCommand command) {
+        return sendAndReceive(topic, key, command, Duration.ofSeconds(5));
+    }
+
+    public CompletableFuture<BaseEvent> sendAndReceive(String topic, String key, BaseCommand command,
+            Duration timeout) {
+        if (replyStore == null) {
+            throw new IllegalStateException("PendingReplyStore not configured — sendAndReceive not available");
+        }
+        CompletableFuture<BaseEvent> future = replyStore.register(command.getCommandId(), timeout);
+        emitCommand(topic, key, command);
+        return future;
+    }
+
+    public void completeReply(BaseEvent event) {
+        if (replyStore != null && event.getCorrelationId() != null) {
+            replyStore.complete(event.getCorrelationId(), event);
+        }
     }
 
     private void dispatchCommand(BaseCommand command) {

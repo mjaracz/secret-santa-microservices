@@ -76,7 +76,6 @@ class UserCommandListenerTest {
 
                 String json = objectMapper.writeValueAsString(command);
 
-                // Simulate what @KafkaListener would do
                 listener.listen(json);
 
                 verify(userService).createUser(any(CreateUserCommand.class));
@@ -89,7 +88,36 @@ class UserCommandListenerTest {
         }
 
         @Test
-        void business_rule_violation_is_not_retried() throws Exception {
+        void emitted_event_contains_correlationId() throws Exception {
+                CreateUserCommand command = CreateUserCommand.builder()
+                                .email("elf@northpole.com")
+                                .name("Buddy the Elf")
+                                .password("syrup123")
+                                .build();
+                command.initDefaults("CREATE_USER");
+
+                UserCreatedEvent expectedEvent = UserCreatedEvent.builder()
+                                .userId("user-uuid-456")
+                                .email("elf@northpole.com")
+                                .name("Buddy the Elf")
+                                .build();
+                expectedEvent.initDefaults("USER_CREATED");
+
+                when(userService.createUser(any(CreateUserCommand.class))).thenReturn(expectedEvent);
+
+                String json = objectMapper.writeValueAsString(command);
+
+                listener.listen(json);
+
+                verify(kafkaTemplate).send(eq("user.events"), eq("user-uuid-456"), jsonCaptor.capture());
+
+                String publishedJson = jsonCaptor.getValue();
+                assertThat(publishedJson).contains("correlationId");
+                assertThat(publishedJson).contains(command.getCommandId());
+        }
+
+        @Test
+        void business_rule_violation_emits_command_failed_event() throws Exception {
                 CreateUserCommand command = CreateUserCommand.builder()
                                 .email("duplicate@test.com")
                                 .name("Duplicate User")
@@ -102,10 +130,14 @@ class UserCommandListenerTest {
 
                 String json = objectMapper.writeValueAsString(command);
 
-                // Should not throw — bus catches IllegalArgumentException
                 listener.listen(json);
 
                 verify(userService, times(1)).createUser(any(CreateUserCommand.class));
-                verifyNoInteractions(kafkaTemplate);
+                verify(kafkaTemplate).send(eq("user.events"), eq(command.getCommandId()), jsonCaptor.capture());
+
+                String publishedJson = jsonCaptor.getValue();
+                assertThat(publishedJson).contains("COMMAND_FAILED");
+                assertThat(publishedJson).contains("Email already registered");
+                assertThat(publishedJson).contains(command.getCommandId());
         }
 }

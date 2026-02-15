@@ -174,8 +174,6 @@ class KafkaServiceBusTest {
         assertThat(callCount.get()).isEqualTo(1);
     }
 
-    // --- Retry: transient failure then success ---
-
     @Test
     void retries_transient_failure_then_succeeds() throws Exception {
         CreateUserCommand command = CreateUserCommand.builder()
@@ -200,8 +198,6 @@ class KafkaServiceBusTest {
         assertThat(callCount.get()).isEqualTo(2);
     }
 
-    // --- Retry: exhausted ---
-
     @Test
     void exhausts_retries_and_logs_error() throws Exception {
         CreateUserCommand command = CreateUserCommand.builder()
@@ -225,18 +221,14 @@ class KafkaServiceBusTest {
         assertThat(callCount.get()).isEqualTo(3);
     }
 
-    // --- Deserialization error ---
-
     @Test
     void deserialization_error_does_not_retry() throws Exception {
         String badJson = "not-json";
         when(objectMapper.readValue(badJson, BaseCommand.class))
                 .thenThrow(new RuntimeException("Deserialization failed"));
 
-        // Should not throw — error is caught and logged
         serviceBus.handleCommandMessage(badJson);
 
-        // No handler should be invoked
         verifyNoInteractions(kafkaTemplate);
     }
 }

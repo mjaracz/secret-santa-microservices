@@ -1,16 +1,12 @@
 package com.secretsanta.gateway.controller;
 
-import com.secretsanta.common.group.commands.AddMemberCommand;
-import com.secretsanta.common.group.commands.CreateGroupCommand;
-import com.secretsanta.common.group.commands.DeleteGroupCommand;
-import com.secretsanta.common.group.commands.UpdateGroupCommand;
 import com.secretsanta.gateway.dto.AddMemberRequest;
-import com.secretsanta.gateway.dto.CommandAcceptedResponse;
+import com.secretsanta.gateway.dto.CommandResponse;
 import com.secretsanta.gateway.dto.CreateGroupRequest;
+import com.secretsanta.gateway.dto.DrawNamesRequest;
 import com.secretsanta.gateway.dto.UpdateGroupRequest;
-import com.secretsanta.infrastructure.kafka.KafkaServiceBus;
+import com.secretsanta.gateway.service.GroupGatewayService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,82 +23,44 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class GroupController {
 
-    private final KafkaServiceBus serviceBus;
-
-    @Value("${kafka.topics.group-commands}")
-    private String groupCommandsTopic;
+    private final GroupGatewayService groupGatewayService;
 
     @PostMapping
-    public Mono<ResponseEntity<CommandAcceptedResponse>> createGroup(
+    public Mono<ResponseEntity<CommandResponse>> createGroup(
             @RequestBody CreateGroupRequest request) {
-        CreateGroupCommand command = CreateGroupCommand.builder()
-                .name(request.getName())
-                .description(request.getDescription())
-                .ownerId(request.getOwnerId())
-                .maxMembers(request.getMaxMembers())
-                .build();
-        command.initDefaults("CREATE_GROUP");
-
-        serviceBus.emitCommand(groupCommandsTopic, command.getCommandId(), command);
-
-        return Mono.just(ResponseEntity.accepted()
-                .body(new CommandAcceptedResponse(command.getCommandId(),
-                        "Group creation command accepted")));
+        return groupGatewayService.createGroup(request)
+                .map(ResponseMapper::toResponseEntity);
     }
 
     @PutMapping("/{groupId}")
-    public Mono<ResponseEntity<CommandAcceptedResponse>> updateGroup(
+    public Mono<ResponseEntity<CommandResponse>> updateGroup(
             @PathVariable String groupId,
             @RequestBody UpdateGroupRequest request) {
-        UpdateGroupCommand command = UpdateGroupCommand.builder()
-                .groupId(groupId)
-                .name(request.getName())
-                .description(request.getDescription())
-                .maxMembers(request.getMaxMembers())
-                .build();
-        command.initDefaults("UPDATE_GROUP");
-
-        serviceBus.emitCommand(groupCommandsTopic, command.getCommandId(), command);
-
-        return Mono.just(ResponseEntity.accepted()
-                .body(new CommandAcceptedResponse(command.getCommandId(),
-                        "Group update command accepted")));
+        return groupGatewayService.updateGroup(groupId, request)
+                .map(ResponseMapper::toResponseEntity);
     }
 
     @DeleteMapping("/{groupId}")
-    public Mono<ResponseEntity<CommandAcceptedResponse>> deleteGroup(
+    public Mono<ResponseEntity<CommandResponse>> deleteGroup(
             @PathVariable String groupId,
             @RequestParam String ownerId) {
-        DeleteGroupCommand command = DeleteGroupCommand.builder()
-                .groupId(groupId)
-                .ownerId(ownerId)
-                .build();
-        command.initDefaults("DELETE_GROUP");
-
-        serviceBus.emitCommand(groupCommandsTopic, command.getCommandId(), command);
-
-        return Mono.just(ResponseEntity.accepted()
-                .body(new CommandAcceptedResponse(command.getCommandId(),
-                        "Group deletion command accepted")));
+        return groupGatewayService.deleteGroup(groupId, ownerId)
+                .map(ResponseMapper::toResponseEntity);
     }
 
     @PostMapping("/{groupId}/members")
-    public Mono<ResponseEntity<CommandAcceptedResponse>> addMember(
+    public Mono<ResponseEntity<CommandResponse>> addMember(
             @PathVariable String groupId,
             @RequestBody AddMemberRequest request) {
-        AddMemberCommand command = AddMemberCommand.builder()
-                .groupId(groupId)
-                .userId(request.getUserId())
-                .userEmail(request.getUserEmail())
-                .userName(request.getUserName())
-                .role(request.getRole())
-                .build();
-        command.initDefaults("ADD_MEMBER");
+        return groupGatewayService.addMember(groupId, request)
+                .map(ResponseMapper::toResponseEntity);
+    }
 
-        serviceBus.emitCommand(groupCommandsTopic, command.getCommandId(), command);
-
-        return Mono.just(ResponseEntity.accepted()
-                .body(new CommandAcceptedResponse(command.getCommandId(),
-                        "Add member command accepted")));
+    @PostMapping("/{groupId}/draw")
+    public Mono<ResponseEntity<CommandResponse>> drawNames(
+            @PathVariable String groupId,
+            @RequestBody DrawNamesRequest request) {
+        return groupGatewayService.drawNames(groupId, request)
+                .map(ResponseMapper::toResponseEntity);
     }
 }

@@ -49,9 +49,17 @@ public class Group {
     @Column(name = "max_members", nullable = false)
     private int maxMembers;
 
+    @Column()
+    @Builder.Default
+    private boolean drawn = false;
+
     @OneToMany(mappedBy = "group", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<GroupMember> members = new ArrayList<>();
+
+    @OneToMany(mappedBy = "group", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<DrawAssignment> drawAssignments = new ArrayList<>();
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false)
