@@ -23,28 +23,33 @@ Project created for demonstration and educational purposes. </br>
 <p>sherable-common -> sherable-infrastructure -> user-service / group-service -> api-gateway</p>
 
 ## Launching the project 
-
-
 #### Each step in dedicated terminal
-#### shareable-common
+
+
+#### Containers Infrastructure
+```bash
+docker compose up 
+```
+
+#### Shareable Common
 ```bash
 cd shareable-common
 mvn clean install
 ```
 
-#### shareable-infrastructure
+#### Shareable Infrastructure
 ```bash
 cd shareable-infrastructure
 mvn clean install
 ```
 
-#### user-service
+#### User Service
 ```bash
 cd user-service
 mvn clean install
 ```
 
-#### group-service
+#### Group Service
 ```bash
 cd group-service
 mvn clean install
