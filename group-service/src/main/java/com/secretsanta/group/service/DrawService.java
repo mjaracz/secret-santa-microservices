@@ -40,20 +40,7 @@ public class DrawService {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found: " + command.getGroupId()));
 
-        if (!group.getOwnerId().equals(command.getRequestedBy())) {
-            throw new IllegalArgumentException("Only the group owner can trigger a draw");
-        }
-
-        if (group.isDrawn()) {
-            throw new IllegalArgumentException("Draw has already been performed for this group");
-        }
-
-        List<GroupMember> members = group.getMembers();
-        if (members.size() < 3) {
-            throw new IllegalArgumentException("Group must have at least 3 members to perform a draw");
-        }
-
-        List<GroupMember> shuffled = new ArrayList<>(members);
+        List<GroupMember> shuffled = getGroupMembers(command, group);
         Collections.shuffle(shuffled, random);
 
         List<DrawAssignment> assignments = new ArrayList<>();
@@ -92,5 +79,22 @@ public class DrawService {
         event.initDefaults("DRAW_COMPLETED");
 
         return event;
+    }
+
+    private static List<GroupMember> getGroupMembers(DrawNamesCommand command, Group group) {
+        if (!group.getOwnerId().equals(command.getRequestedBy())) {
+            throw new IllegalArgumentException("Only the group owner can trigger a draw");
+        }
+
+        if (group.isDrawn()) {
+            throw new IllegalArgumentException("Draw has already been performed for this group");
+        }
+
+        List<GroupMember> members = group.getMembers();
+        if (members.size() < 3) {
+            throw new IllegalArgumentException("Group must have at least 3 members to perform a draw");
+        }
+
+	    return new ArrayList<>(members);
     }
 }
