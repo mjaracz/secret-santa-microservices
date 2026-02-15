@@ -21,7 +21,6 @@ import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -138,13 +137,11 @@ class DrawServiceTest {
 
         DrawCompletedEvent event = drawService.drawNames(command, new Random(42));
 
-        // Build adjacency map: giver -> receiver
         Map<String, String> giverToReceiver = new HashMap<>();
         for (DrawAssignmentDto a : event.getAssignments()) {
             giverToReceiver.put(a.getGiverId(), a.getReceiverId());
         }
 
-        // Walk the cycle starting from the first giver
         String start = event.getAssignments().getFirst().getGiverId();
         String current = start;
         Set<String> visited = new HashSet<>();
@@ -154,7 +151,6 @@ class DrawServiceTest {
             current = giverToReceiver.get(current);
         } while (!current.equals(start));
 
-        // All 5 members should be visited in a single cycle
         assertThat(visited).hasSize(5);
     }
 

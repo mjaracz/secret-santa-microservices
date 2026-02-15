@@ -1,5 +1,9 @@
 # Overview
-Event-driven microservices platform for Secret Santa gift exchanges.<br/>
+Multi-threaded distributed microservices architecture for demonstration / educational purposes </br>
+**Domain:** Secret Santa gift exchanges
+<br/> 
+</br>
+
 **Technology stack**:
 - Spring Boot 4.0.2 
 - Java 25 
@@ -20,6 +24,8 @@ Project created for demonstration and educational purposes. </br>
 
 ## Launching the project 
 
+
+#### Each step in dedicated terminal
 #### shareable-common
 ```bash
 cd shareable-common
