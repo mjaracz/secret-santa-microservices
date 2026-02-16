@@ -13,6 +13,79 @@ Multi-threaded distributed microservices architecture for demonstration / educat
 
 Project created for demonstration and educational purposes. </br>
 
+**Architecture Pattern:**
+
+The platform is built using **event-driven microservices** pattern with **domain-driven design** principles.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Client Layer                         │
+│  (Web Browser, Mobile App - Future, API Consumers)      │
+└────────────────────┬────────────────────────────────────┘
+                     │ HTTP/REST
+                     ↓
+┌────────────────────────────────────────────────────────┐
+│                 API Gateway                            │
+│  (Single Entry Point, Protocol Translation)            │
+└────────────────────┬───────────────────────────────────┘
+                     │ Kafka Events (Async)
+                     ↓
+┌────────────────────────────────────────────────────────┐
+│              Apache Kafka (Event Bus)                  │
+│  (Topics: user.events, group.events, etc.)             │
+└─┬──────────┬──────────┬──────────┬─────────────────────┘
+  │          │          │          │
+  ↓          ↓          ↓          ↓
+┌────┐   ┌─────┐   ┌────────┐  ┌──────────┐
+│User│   │Group│   │Wishlist│  │Notification│
+│Svc │   │Svc  │   │Svc     │  │Svc        │
+└─┬──┘   └─┬───┘   └───┬────┘  └─────┬─────┘
+  │        │           │             │
+  ↓        ↓           ↓             ↓
+┌────┐   ┌────┐     ┌────┐        ┌────┐
+│PG  │   │PG  │     │PG  │        │Mongo│
+│User│   │Grp │     │Wish│        │Notif│
+└────┘   └────┘     └────┘        └─────┘
+```
+
+```
+External Client (REST/HTTP)
+    ↓
+API Gateway (Protocol Bridge)
+    ↓
+Kafka Topics (Event Bus)
+    ↓
+Domain Workers (Business Logic)
+    ↓
+Databases (Persistence)
+```
+
+**Key Principles:**
+- ✅ **API Gateway ONLY** exposes REST endpoints
+- ✅ **Domain workers** communicate ONLY via Kafka events
+- ✅ **Zero synchronous calls** between microservices
+- ✅ **No REST dependencies** in worker services
+- ✅ **Event sourcing** for all inter-service communication
+
+**Why Pure Workers?**
+- Loose coupling (services don't know about each other)
+- Independent scaling (scale workers without touching gateway)
+- Fault tolerance (Kafka buffers events if service down)
+- Async benefits (non-blocking, higher throughput)
+- Natural audit trail (all commands/events in Kafka)
+
+### Database Per Service Pattern
+
+Each domain service owns its isolated database:
+
+| Service | Database | Type | Port |
+|---------|----------|------|------|
+| API Gateway | None | Stateless | - |
+| User Service | user_db | PostgreSQL | 5432 |
+| Group Service | group_db | PostgreSQL | 5433 |
+| Wishlist Service (In Prgoress) | wishlist_db | PostgreSQL | 5434 |
+| Notification Service (In Progress) | notification_db | **MongoDB** | 27017 |
+
 ## Prerequisites
 - Docker version 29.1.5
 - Java 25.0.2 LTS
@@ -23,36 +96,50 @@ Project created for demonstration and educational purposes. </br>
 <p>sherable-common -> sherable-infrastructure -> user-service / group-service -> api-gateway</p>
 
 ## Launching the project 
-#### Each step in dedicated terminal
+<h5> Each step in dedicated terminal</h5>
 
+<h5> Containers Infrastructure </h5>
 
-#### Containers Infrastructure
 ```bash
 docker compose up 
 ```
 
-#### Shareable Common
+<h5> Shareable Common</h5>
+
 ```bash
 cd shareable-common
 mvn clean install
 ```
 
-#### Shareable Infrastructure
+<h5> Shareable Infrastructure</h5>
+
 ```bash
 cd shareable-infrastructure
 mvn clean install
 ```
 
-#### User Service
+<h5> User Service</h5>
+
 ```bash
 cd user-service
 mvn clean install
+mvn spring-boot:run
 ```
 
-#### Group Service
+<h5> Group Service</h5>
+
 ```bash
 cd group-service
 mvn clean install
+mvn spring-boot:run
+```
+
+<h5> Api Gatewat</h5>
+
+```bash
+cd api-gateway
+mvn clean install
+mvn spring-boot:run
 ```
 
 ## Available endpoints
