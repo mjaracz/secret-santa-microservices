@@ -1,5 +1,6 @@
 package com.secretsanta.common;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -15,4 +16,7 @@ public class CommandFailedEvent extends BaseEvent {
 
 	private String reason;
 	private String originalCommandType;
+
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	private String errorCode;
 }

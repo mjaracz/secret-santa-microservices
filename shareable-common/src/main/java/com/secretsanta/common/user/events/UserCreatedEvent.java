@@ -2,6 +2,7 @@ package com.secretsanta.common.user.events;
 
 import com.secretsanta.common.BaseEvent;
 
+import com.secretsanta.common.user.UserAccountStatus;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -18,4 +19,5 @@ public class UserCreatedEvent extends BaseEvent {
 	private String userId;
 	private String email;
 	private String name;
+	private UserAccountStatus status;
 }
