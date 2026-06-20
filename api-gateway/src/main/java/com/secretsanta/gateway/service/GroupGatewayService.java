@@ -41,7 +41,7 @@ public class GroupGatewayService {
                 .groupId(groupId)
                 .name(request.getName())
                 .description(request.getDescription())
-                .maxMembers(request.getMaxMembers())
+                .maxMembers(request.getMaxMembers() == null ? 0 : request.getMaxMembers())
                 .build();
         command.initDefaults("UPDATE_GROUP");
 

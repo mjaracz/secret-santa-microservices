@@ -24,7 +24,9 @@ public class AddMemberCommand extends BaseCommand {
 	@NotBlank(message = "User ID is required")
 	private String userId;
 
-	@Email(message = "Email should be valid")
+	@NotBlank(message = "Email is required")
+	@Email(message = "Invalid email format")
+	@Size(max = 320, message = "Email must not exceed 320 characters")
 	private String userEmail;
 
 	@NotBlank(message = "Name is required")

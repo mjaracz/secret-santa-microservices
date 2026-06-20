@@ -17,7 +17,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-@WebFluxTest(UserController.class)
+@WebFluxTest(controllers = UserController.class, properties = "server.port=0")
 class UserControllerTest {
 
     @Autowired

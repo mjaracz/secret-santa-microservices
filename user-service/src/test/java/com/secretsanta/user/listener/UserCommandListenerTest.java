@@ -24,11 +24,14 @@ import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -60,7 +63,7 @@ class UserCommandListenerTest {
         retryTemplate.setBackOffPolicy(new NoBackOffPolicy());
         retryTemplate.setRetryPolicy(
                 new SimpleRetryPolicy(
-                        3,
+                        1,
                         Map.of(
                                 Exception.class,
                                 true,
@@ -88,6 +91,9 @@ class UserCommandListenerTest {
                 "userEventsTopic",
                 "user.events"
         );
+
+        lenient().when(kafkaTemplate.send(any(String.class), any(String.class), any(String.class)))
+                .thenReturn(CompletableFuture.completedFuture(null));
     }
 
     @Test
@@ -178,25 +184,23 @@ class UserCommandListenerTest {
     }
 
     @Test
-    void unexpectedExceptionIsRetriedAndEmitsInternalError() throws Exception {
+    void unexpectedExceptionIsPropagatedForKafkaRedelivery() throws Exception {
         CreateUserCommand command = validCommand();
 
         when(userService.createUser(any(CreateUserCommand.class)))
                 .thenThrow(new RuntimeException("Database unavailable"));
 
-        listener.listen(objectMapper.writeValueAsString(command));
+        String message = objectMapper.writeValueAsString(command);
+        assertThatThrownBy(() -> listener.listen(message))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Database unavailable");
 
-        verify(userService, times(3))
+        verify(userService, times(1))
                 .createUser(any(CreateUserCommand.class));
-        verify(commandValidator, times(3))
+        verify(commandValidator, times(1))
                 .validate(any(CreateUserCommand.class));
 
-        CommandFailedEvent failedEvent = captureFailureEvent(command);
-        assertThat(failedEvent.getErrorCode())
-                .isEqualTo("INTERNAL_ERROR");
-        assertThat(failedEvent.getReason())
-                .isEqualTo("Internal error while processing command")
-                .doesNotContain("Database unavailable");
+        verifyNoInteractions(kafkaTemplate);
     }
 
     private CommandFailedEvent captureFailureEvent(

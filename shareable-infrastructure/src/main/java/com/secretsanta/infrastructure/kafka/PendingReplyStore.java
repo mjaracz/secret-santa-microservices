@@ -21,7 +21,7 @@ public class PendingReplyStore {
     public CompletableFuture<BaseEvent> register(String correlationId, Duration timeout) {
         CompletableFuture<BaseEvent> future = new CompletableFuture<BaseEvent>()
                 .orTimeout(timeout.toMillis(), TimeUnit.MILLISECONDS);
-        future.whenComplete((result, ex) -> pending.remove(correlationId));
+        future.whenComplete((result, ex) -> pending.remove(correlationId, future));
         pending.put(correlationId, future);
         log.debug("Registered pending reply for correlationId={}", correlationId);
         return future;
