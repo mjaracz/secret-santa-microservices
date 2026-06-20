@@ -17,6 +17,7 @@ public class MemberAddedEvent extends BaseEvent {
 
 	private String groupId;
 	private String userId;
+	private String userEmail;
 	private String userName;
 	private String role;
 }

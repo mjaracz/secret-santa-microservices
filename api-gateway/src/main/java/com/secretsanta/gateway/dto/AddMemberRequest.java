@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AddMemberRequest {
+    private String requestedBy;
     private String userId;
     private String userEmail;
     private String userName;

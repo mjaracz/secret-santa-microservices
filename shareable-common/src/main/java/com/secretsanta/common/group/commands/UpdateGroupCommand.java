@@ -21,6 +21,9 @@ public class UpdateGroupCommand extends BaseCommand {
 	@NotBlank(message = "Group ID is required")
 	private String groupId;
 
+	@NotBlank(message = "Requester ID is required")
+	private String requestedBy;
+
 	@Size(min = 2, max = 255, message = "Group name must be between 2 and 255 characters")
 	private String name;
 
@@ -28,5 +31,5 @@ public class UpdateGroupCommand extends BaseCommand {
 	private String description;
 
 	@Min(value = 3, message = "A group must have at least 3 members")
-	private int maxMembers;
+	private Integer maxMembers;
 }

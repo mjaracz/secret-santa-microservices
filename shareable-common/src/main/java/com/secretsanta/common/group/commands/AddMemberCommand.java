@@ -21,6 +21,9 @@ public class AddMemberCommand extends BaseCommand {
 	@NotBlank(message = "Group ID is required")
 	private String groupId;
 
+	@NotBlank(message = "Requester ID is required")
+	private String requestedBy;
+
 	@NotBlank(message = "User ID is required")
 	private String userId;
 
