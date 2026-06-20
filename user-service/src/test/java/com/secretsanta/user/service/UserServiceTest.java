@@ -3,6 +3,7 @@ package com.secretsanta.user.service;
 import com.secretsanta.common.user.UserAccountStatus;
 import com.secretsanta.common.user.commands.CreateUserCommand;
 import com.secretsanta.common.user.events.UserCreatedEvent;
+import com.secretsanta.common.user.events.EmailVerificationRequestedEvent;
 import com.secretsanta.user.entity.User;
 import com.secretsanta.user.exception.UserCommandException;
 import com.secretsanta.user.repository.UserRepository;
@@ -48,6 +49,9 @@ class UserServiceTest {
 	@Mock
 	private UserRepository userRepository;
 
+	@Mock
+	private EmailVerificationService emailVerificationService;
+
 	@Captor
 	private ArgumentCaptor<User> userCaptor;
 
@@ -60,7 +64,8 @@ class UserServiceTest {
 
 		userService = new UserService(
 			userRepository,
-			passwordEncoder
+			passwordEncoder,
+			emailVerificationService
 		);
 	}
 
@@ -81,8 +86,20 @@ class UserServiceTest {
 				)
 			);
 
-		UserCreatedEvent event =
+		EmailVerificationRequestedEvent verificationEvent =
+			EmailVerificationRequestedEvent.builder()
+				.userId(USER_ID.toString())
+				.email(EMAIL)
+				.verificationToken("verification-token")
+				.build();
+		verificationEvent.initDefaults("EMAIL_VERIFICATION_REQUESTED");
+
+		when(emailVerificationService.issueFor(any(User.class)))
+			.thenReturn(verificationEvent);
+
+		UserRegistrationResult result =
 			userService.createUser(command);
+		UserCreatedEvent event = result.userCreatedEvent();
 
 		verify(userRepository)
 			.saveAndFlush(userCaptor.capture());
@@ -129,6 +146,9 @@ class UserServiceTest {
 
 		assertThat(event.toString())
 			.doesNotContain(PASSWORD);
+
+		assertThat(result.verificationRequestedEvent())
+			.isSameAs(verificationEvent);
 	}
 
 	@Test
@@ -242,6 +262,7 @@ class UserServiceTest {
 			.passwordHash(user.getPasswordHash())
 			.status(user.getStatus())
 			.emailVerifiedAt(user.getEmailVerifiedAt())
+			.role(user.getRole())
 			.version(user.getVersion())
 			.build();
 	}

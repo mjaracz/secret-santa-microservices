@@ -9,6 +9,12 @@ import com.secretsanta.common.group.events.GroupDeletedEvent;
 import com.secretsanta.common.group.events.GroupUpdatedEvent;
 import com.secretsanta.common.group.events.MemberAddedEvent;
 import com.secretsanta.common.user.events.UserCreatedEvent;
+import com.secretsanta.common.user.events.EmailVerificationRequestedEvent;
+import com.secretsanta.common.user.events.EmailVerificationResentEvent;
+import com.secretsanta.common.user.events.EmailVerifiedEvent;
+import com.secretsanta.common.user.events.SessionRefreshedEvent;
+import com.secretsanta.common.user.events.SessionRevokedEvent;
+import com.secretsanta.common.user.events.UserAuthenticatedEvent;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -29,6 +35,12 @@ import java.util.UUID;
 )
 @JsonSubTypes({
 		@JsonSubTypes.Type(value = UserCreatedEvent.class, name = "USER_CREATED"),
+		@JsonSubTypes.Type(value = UserAuthenticatedEvent.class, name = "USER_AUTHENTICATED"),
+		@JsonSubTypes.Type(value = SessionRefreshedEvent.class, name = "SESSION_REFRESHED"),
+		@JsonSubTypes.Type(value = SessionRevokedEvent.class, name = "SESSION_REVOKED"),
+		@JsonSubTypes.Type(value = EmailVerifiedEvent.class, name = "EMAIL_VERIFIED"),
+		@JsonSubTypes.Type(value = EmailVerificationResentEvent.class, name = "EMAIL_VERIFICATION_RESENT"),
+		@JsonSubTypes.Type(value = EmailVerificationRequestedEvent.class, name = "EMAIL_VERIFICATION_REQUESTED"),
 		@JsonSubTypes.Type(value = GroupCreatedEvent.class, name = "GROUP_CREATED"),
 		@JsonSubTypes.Type(value = GroupUpdatedEvent.class, name = "GROUP_UPDATED"),
 		@JsonSubTypes.Type(value = GroupDeletedEvent.class, name = "GROUP_DELETED"),

@@ -3,11 +3,20 @@ package com.secretsanta.user.listener;
 import com.secretsanta.common.BaseEvent;
 import com.secretsanta.common.CommandFailedEvent;
 import com.secretsanta.common.user.UserAccountStatus;
+import com.secretsanta.common.user.UserRole;
+import com.secretsanta.common.user.commands.AuthenticateUserCommand;
 import com.secretsanta.common.user.commands.CreateUserCommand;
+import com.secretsanta.common.user.dto.AuthenticatedUserDto;
 import com.secretsanta.common.user.events.UserCreatedEvent;
+import com.secretsanta.common.user.events.UserAuthenticatedEvent;
+import com.secretsanta.common.user.events.EmailVerificationRequestedEvent;
 import com.secretsanta.infrastructure.kafka.KafkaServiceBus;
 import com.secretsanta.user.exception.UserCommandException;
 import com.secretsanta.user.service.UserService;
+import com.secretsanta.user.service.UserAuthenticationService;
+import com.secretsanta.user.service.EmailVerificationService;
+import com.secretsanta.user.service.UserRegistrationResult;
+import com.secretsanta.user.validator.AuthenticationCommandValidator;
 import com.secretsanta.user.validator.CreateUserCommandValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,7 +53,16 @@ class UserCommandListenerTest {
     private UserService userService;
 
     @Mock
+    private UserAuthenticationService authenticationService;
+
+    @Mock
+    private EmailVerificationService emailVerificationService;
+
+    @Mock
     private CreateUserCommandValidator commandValidator;
+
+    @Mock
+    private AuthenticationCommandValidator authenticationCommandValidator;
 
     @Captor
     private ArgumentCaptor<String> jsonCaptor;
@@ -80,13 +98,21 @@ class UserCommandListenerTest {
         listener = new UserCommandListener(
                 serviceBus,
                 userService,
-                commandValidator
+                authenticationService,
+                emailVerificationService,
+                commandValidator,
+                authenticationCommandValidator
         );
 
         ReflectionTestUtils.setField(
                 listener,
                 "userEventsTopic",
                 "user.events"
+        );
+        ReflectionTestUtils.setField(
+                listener,
+                "notificationEventsTopic",
+                "notification.events"
         );
     }
 
@@ -102,8 +128,20 @@ class UserCommandListenerTest {
                 .build();
         serviceEvent.initDefaults("USER_CREATED");
 
+        EmailVerificationRequestedEvent verificationEvent =
+                EmailVerificationRequestedEvent.builder()
+                        .userId("user-123")
+                        .email("user@example.com")
+                        .name("New User")
+                        .verificationToken("verification-token")
+                        .build();
+        verificationEvent.initDefaults("EMAIL_VERIFICATION_REQUESTED");
+
         when(userService.createUser(any(CreateUserCommand.class)))
-                .thenReturn(serviceEvent);
+                .thenReturn(new UserRegistrationResult(
+                        serviceEvent,
+                        verificationEvent
+                ));
 
         listener.listen(objectMapper.writeValueAsString(command));
 
@@ -114,11 +152,13 @@ class UserCommandListenerTest {
                 eq("user-123"),
                 jsonCaptor.capture()
         );
-
-        BaseEvent publishedEvent = objectMapper.readValue(
-                jsonCaptor.getValue(),
-                BaseEvent.class
+        verify(kafkaTemplate).send(
+                eq("notification.events"),
+                eq("user-123"),
+                any(String.class)
         );
+
+        BaseEvent publishedEvent = readEvent(jsonCaptor.getValue());
 
         assertThat(publishedEvent).isInstanceOf(UserCreatedEvent.class);
 
@@ -199,6 +239,42 @@ class UserCommandListenerTest {
                 .doesNotContain("Database unavailable");
     }
 
+    @Test
+    void authenticatesUserAndPreservesCorrelationId() throws Exception {
+        AuthenticateUserCommand command = AuthenticateUserCommand.builder()
+                .email("user@example.com")
+                .password("correct-horse-battery-staple")
+                .refreshTokenHash("a".repeat(64))
+                .build();
+        command.initDefaults("AUTHENTICATE_USER");
+        UserAuthenticatedEvent serviceEvent = UserAuthenticatedEvent.builder()
+                .user(AuthenticatedUserDto.builder()
+                        .userId("user-123")
+                        .email("user@example.com")
+                        .name("User")
+                        .role(UserRole.USER)
+                        .build())
+                .refreshTokenExpiresAt(1_800_000_000_000L)
+                .build();
+        serviceEvent.initDefaults("USER_AUTHENTICATED");
+        when(authenticationService.authenticate(any(AuthenticateUserCommand.class)))
+                .thenReturn(serviceEvent);
+
+        listener.listen(objectMapper.writeValueAsString(command));
+
+        verify(authenticationCommandValidator).validate(command);
+        verify(authenticationService).authenticate(command);
+        verify(kafkaTemplate).send(
+                eq("user.events"),
+                eq(command.getCommandId()),
+                jsonCaptor.capture()
+        );
+        BaseEvent published = readEvent(jsonCaptor.getValue());
+        assertThat(published).isInstanceOf(UserAuthenticatedEvent.class);
+        assertThat(published.getCorrelationId())
+                .isEqualTo(command.getCommandId());
+    }
+
     private CommandFailedEvent captureFailureEvent(
             CreateUserCommand command
     ) throws Exception {
@@ -230,5 +306,13 @@ class UserCommandListenerTest {
                 .build();
         command.initDefaults("CREATE_USER");
         return command;
+    }
+
+    private BaseEvent readEvent(String json) {
+        try {
+            return objectMapper.readValue(json, BaseEvent.class);
+        } catch (Exception exception) {
+            throw new AssertionError(exception);
+        }
     }
 }

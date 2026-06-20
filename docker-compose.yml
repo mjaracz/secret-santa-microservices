@@ -90,6 +90,14 @@ services:
     networks:
       - secret-santa-network
 
+  mailpit:
+    image: axllent/mailpit:v1.20
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - secret-santa-network
+
 volumes:
   postgres-user-data:
   postgres-group-data:

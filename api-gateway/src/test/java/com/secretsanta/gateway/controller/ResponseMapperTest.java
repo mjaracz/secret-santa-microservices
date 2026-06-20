@@ -17,6 +17,12 @@ class ResponseMapperTest {
             "USER_EMAIL_ALREADY_EXISTS, 409",
             "INTERNAL_ERROR, 500",
             "REQUEST_TIMEOUT, 504",
+            "AUTH_INVALID_CREDENTIALS, 401",
+            "AUTH_REFRESH_TOKEN_INVALID, 401",
+            "AUTH_REFRESH_TOKEN_REUSED, 401",
+            "AUTH_EMAIL_NOT_VERIFIED, 403",
+            "AUTH_FORBIDDEN, 403",
+            "USER_VERIFICATION_TOKEN_INVALID, 400",
             "UNKNOWN_BUSINESS_ERROR, 422"
     })
     void mapsErrorCodeToExpectedHttpStatus(

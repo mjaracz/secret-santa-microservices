@@ -43,7 +43,8 @@ public class GroupService {
         requireText(command.getOwnerId(), "Owner ID is required");
         validateMaxMembers(command.getMaxMembers());
 
-        if (groupRepository.existsByNameAndOwnerId(command.getName(), command.getOwnerId())) {
+        String ownerId = command.getOwnerId();
+        if (groupRepository.existsByNameAndOwnerId(command.getName(), ownerId)) {
             throw new IllegalArgumentException(
                     "Group with name '" + command.getName() + "' already exists for this owner");
         }
@@ -51,7 +52,7 @@ public class GroupService {
         Group group = Group.builder()
                 .name(command.getName())
                 .description(command.getDescription())
-                .ownerId(command.getOwnerId())
+                .ownerId(ownerId)
                 .maxMembers(command.getMaxMembers())
                 .build();
 
@@ -60,7 +61,7 @@ public class GroupService {
 
         GroupMember ownerMember = GroupMember.builder()
                 .group(savedGroup)
-                .userId(command.getOwnerId())
+                .userId(ownerId)
                 .userName("Owner")
                 .role("ADMIN")
                 .build();
