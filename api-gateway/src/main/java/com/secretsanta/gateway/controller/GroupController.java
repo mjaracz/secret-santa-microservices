@@ -7,6 +7,7 @@ import com.secretsanta.gateway.dto.DrawNamesRequest;
 import com.secretsanta.gateway.dto.UpdateGroupRequest;
 import com.secretsanta.gateway.service.GroupGatewayService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,7 +30,7 @@ public class GroupController {
     public Mono<ResponseEntity<CommandResponse>> createGroup(
             @RequestBody CreateGroupRequest request) {
         return groupGatewayService.createGroup(request)
-                .map(ResponseMapper::toResponseEntity);
+                .map(response -> ResponseMapper.toResponseEntity(response, HttpStatus.CREATED));
     }
 
     @PutMapping("/{groupId}")

@@ -19,4 +19,5 @@ public class GroupCreatedEvent extends BaseEvent {
 	private String name;
 	private String description;
 	private String ownerId;
+	private int maxMembers;
 }

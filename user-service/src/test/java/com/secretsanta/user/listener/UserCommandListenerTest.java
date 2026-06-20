@@ -1,9 +1,14 @@
 package com.secretsanta.user.listener;
 
+import com.secretsanta.common.BaseEvent;
+import com.secretsanta.common.CommandFailedEvent;
+import com.secretsanta.common.user.UserAccountStatus;
 import com.secretsanta.common.user.commands.CreateUserCommand;
 import com.secretsanta.common.user.events.UserCreatedEvent;
 import com.secretsanta.infrastructure.kafka.KafkaServiceBus;
+import com.secretsanta.user.exception.UserCommandException;
 import com.secretsanta.user.service.UserService;
+import com.secretsanta.user.validator.CreateUserCommandValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,129 +20,215 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.retry.backoff.NoBackOffPolicy;
 import org.springframework.retry.policy.SimpleRetryPolicy;
 import org.springframework.retry.support.RetryTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.Map;
 
-import org.springframework.test.util.ReflectionTestUtils;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class UserCommandListenerTest {
 
-        @Mock
-        private KafkaTemplate<String, String> kafkaTemplate;
+    @Mock
+    private KafkaTemplate<String, String> kafkaTemplate;
 
-        @Mock
-        private UserService userService;
+    @Mock
+    private UserService userService;
 
-        private ObjectMapper objectMapper;
-        private KafkaServiceBus serviceBus;
-        private UserCommandListener listener;
+    @Mock
+    private CreateUserCommandValidator commandValidator;
 
-        @Captor
-        private ArgumentCaptor<String> jsonCaptor;
+    @Captor
+    private ArgumentCaptor<String> jsonCaptor;
 
-        @BeforeEach
-        void setUp() {
-                objectMapper = new ObjectMapper();
+    private ObjectMapper objectMapper;
+    private UserCommandListener listener;
 
-                RetryTemplate retryTemplate = new RetryTemplate();
-                retryTemplate.setBackOffPolicy(new NoBackOffPolicy());
-                retryTemplate.setRetryPolicy(new SimpleRetryPolicy(3,
-                                Map.of(Exception.class, true, IllegalArgumentException.class, false), true));
+    @BeforeEach
+    void setUp() {
+        objectMapper = new ObjectMapper();
 
-                serviceBus = new KafkaServiceBus(kafkaTemplate, objectMapper, retryTemplate);
-                listener = new UserCommandListener(serviceBus, userService);
-                ReflectionTestUtils.setField(listener, "userEventsTopic", "user.events");
-        }
+        RetryTemplate retryTemplate = new RetryTemplate();
+        retryTemplate.setBackOffPolicy(new NoBackOffPolicy());
+        retryTemplate.setRetryPolicy(
+                new SimpleRetryPolicy(
+                        3,
+                        Map.of(
+                                Exception.class,
+                                true,
+                                IllegalArgumentException.class,
+                                false
+                        ),
+                        true
+                )
+        );
 
-        @Test
-        void handles_create_user_command_and_emits_event() throws Exception {
-                CreateUserCommand command = CreateUserCommand.builder()
-                                .email("santa@northpole.com")
-                                .name("Santa Claus")
-                                .password("reindeer123")
-                                .build();
-                command.initDefaults("CREATE_USER");
+        KafkaServiceBus serviceBus = new KafkaServiceBus(
+                kafkaTemplate,
+                objectMapper,
+                retryTemplate
+        );
 
-                UserCreatedEvent expectedEvent = UserCreatedEvent.builder()
-                                .userId("user-uuid-123")
-                                .email("santa@northpole.com")
-                                .name("Santa Claus")
-                                .build();
-                expectedEvent.initDefaults("USER_CREATED");
+        listener = new UserCommandListener(
+                serviceBus,
+                userService,
+                commandValidator
+        );
 
-                when(userService.createUser(any(CreateUserCommand.class))).thenReturn(expectedEvent);
+        ReflectionTestUtils.setField(
+                listener,
+                "userEventsTopic",
+                "user.events"
+        );
+    }
 
-                String json = objectMapper.writeValueAsString(command);
+    @Test
+    void emitsCreatedEventWithStatusAndCorrelationId() throws Exception {
+        CreateUserCommand command = validCommand();
 
-                listener.listen(json);
+        UserCreatedEvent serviceEvent = UserCreatedEvent.builder()
+                .userId("user-123")
+                .email("user@example.com")
+                .name("New User")
+                .status(UserAccountStatus.PENDING_VERIFICATION)
+                .build();
+        serviceEvent.initDefaults("USER_CREATED");
 
-                verify(userService).createUser(any(CreateUserCommand.class));
-                verify(kafkaTemplate).send(eq("user.events"), eq("user-uuid-123"), jsonCaptor.capture());
+        when(userService.createUser(any(CreateUserCommand.class)))
+                .thenReturn(serviceEvent);
 
-                String publishedJson = jsonCaptor.getValue();
-                assertThat(publishedJson).contains("USER_CREATED");
-                assertThat(publishedJson).contains("santa@northpole.com");
-                assertThat(publishedJson).contains("user-uuid-123");
-        }
+        listener.listen(objectMapper.writeValueAsString(command));
 
-        @Test
-        void emitted_event_contains_correlationId() throws Exception {
-                CreateUserCommand command = CreateUserCommand.builder()
-                                .email("elf@northpole.com")
-                                .name("Buddy the Elf")
-                                .password("syrup123")
-                                .build();
-                command.initDefaults("CREATE_USER");
+        verify(commandValidator).validate(any(CreateUserCommand.class));
+        verify(userService).createUser(any(CreateUserCommand.class));
+        verify(kafkaTemplate).send(
+                eq("user.events"),
+                eq("user-123"),
+                jsonCaptor.capture()
+        );
 
-                UserCreatedEvent expectedEvent = UserCreatedEvent.builder()
-                                .userId("user-uuid-456")
-                                .email("elf@northpole.com")
-                                .name("Buddy the Elf")
-                                .build();
-                expectedEvent.initDefaults("USER_CREATED");
+        BaseEvent publishedEvent = objectMapper.readValue(
+                jsonCaptor.getValue(),
+                BaseEvent.class
+        );
 
-                when(userService.createUser(any(CreateUserCommand.class))).thenReturn(expectedEvent);
+        assertThat(publishedEvent).isInstanceOf(UserCreatedEvent.class);
 
-                String json = objectMapper.writeValueAsString(command);
+        UserCreatedEvent createdEvent = (UserCreatedEvent) publishedEvent;
+        assertThat(createdEvent.getStatus())
+                .isEqualTo(UserAccountStatus.PENDING_VERIFICATION);
+        assertThat(createdEvent.getCorrelationId())
+                .isEqualTo(command.getCommandId());
+    }
 
-                listener.listen(json);
+    @Test
+    void invalidCommandDoesNotInvokeUserService() throws Exception {
+        CreateUserCommand command = validCommand();
 
-                verify(kafkaTemplate).send(eq("user.events"), eq("user-uuid-456"), jsonCaptor.capture());
+        doThrow(
+                new UserCommandException(
+                        "USER_VALIDATION_FAILED",
+                        "email: Invalid email format"
+                )
+        ).when(commandValidator).validate(any(CreateUserCommand.class));
 
-                String publishedJson = jsonCaptor.getValue();
-                assertThat(publishedJson).contains("correlationId");
-                assertThat(publishedJson).contains(command.getCommandId());
-        }
+        listener.listen(objectMapper.writeValueAsString(command));
 
-        @Test
-        void business_rule_violation_emits_command_failed_event() throws Exception {
-                CreateUserCommand command = CreateUserCommand.builder()
-                                .email("duplicate@test.com")
-                                .name("Duplicate User")
-                                .password("password123")
-                                .build();
-                command.initDefaults("CREATE_USER");
+        verifyNoInteractions(userService);
 
-                when(userService.createUser(any(CreateUserCommand.class)))
-                                .thenThrow(new IllegalArgumentException("Email already registered"));
+        CommandFailedEvent failedEvent = captureFailureEvent(command);
+        assertThat(failedEvent.getErrorCode())
+                .isEqualTo("USER_VALIDATION_FAILED");
+        assertThat(failedEvent.getReason())
+                .isEqualTo("email: Invalid email format");
+    }
 
-                String json = objectMapper.writeValueAsString(command);
+    @Test
+    void duplicateEmailEmitsTypedFailureEvent() throws Exception {
+        CreateUserCommand command = validCommand();
 
-                listener.listen(json);
+        when(userService.createUser(any(CreateUserCommand.class)))
+                .thenThrow(
+                        new UserCommandException(
+                                "USER_EMAIL_ALREADY_EXISTS",
+                                "Email is already registered"
+                        )
+                );
 
-                verify(userService, times(1)).createUser(any(CreateUserCommand.class));
-                verify(kafkaTemplate).send(eq("user.events"), eq(command.getCommandId()), jsonCaptor.capture());
+        listener.listen(objectMapper.writeValueAsString(command));
 
-                String publishedJson = jsonCaptor.getValue();
-                assertThat(publishedJson).contains("COMMAND_FAILED");
-                assertThat(publishedJson).contains("Email already registered");
-                assertThat(publishedJson).contains(command.getCommandId());
-        }
+        verify(userService, times(1))
+                .createUser(any(CreateUserCommand.class));
+
+        CommandFailedEvent failedEvent = captureFailureEvent(command);
+        assertThat(failedEvent.getErrorCode())
+                .isEqualTo("USER_EMAIL_ALREADY_EXISTS");
+        assertThat(failedEvent.getReason())
+                .isEqualTo("Email is already registered");
+        assertThat(failedEvent.getOriginalCommandType())
+                .isEqualTo("CREATE_USER");
+    }
+
+    @Test
+    void unexpectedExceptionIsRetriedAndEmitsInternalError() throws Exception {
+        CreateUserCommand command = validCommand();
+
+        when(userService.createUser(any(CreateUserCommand.class)))
+                .thenThrow(new RuntimeException("Database unavailable"));
+
+        listener.listen(objectMapper.writeValueAsString(command));
+
+        verify(userService, times(3))
+                .createUser(any(CreateUserCommand.class));
+        verify(commandValidator, times(3))
+                .validate(any(CreateUserCommand.class));
+
+        CommandFailedEvent failedEvent = captureFailureEvent(command);
+        assertThat(failedEvent.getErrorCode())
+                .isEqualTo("INTERNAL_ERROR");
+        assertThat(failedEvent.getReason())
+                .isEqualTo("Internal error while processing command")
+                .doesNotContain("Database unavailable");
+    }
+
+    private CommandFailedEvent captureFailureEvent(
+            CreateUserCommand command
+    ) throws Exception {
+        verify(kafkaTemplate).send(
+                eq("user.events"),
+                eq(command.getCommandId()),
+                jsonCaptor.capture()
+        );
+
+        BaseEvent event = objectMapper.readValue(
+                jsonCaptor.getValue(),
+                BaseEvent.class
+        );
+
+        assertThat(event).isInstanceOf(CommandFailedEvent.class);
+
+        CommandFailedEvent failedEvent = (CommandFailedEvent) event;
+        assertThat(failedEvent.getCorrelationId())
+                .isEqualTo(command.getCommandId());
+
+        return failedEvent;
+    }
+
+    private CreateUserCommand validCommand() {
+        CreateUserCommand command = CreateUserCommand.builder()
+                .email("user@example.com")
+                .name("New User")
+                .password("correct-horse-battery-staple")
+                .build();
+        command.initDefaults("CREATE_USER");
+        return command;
+    }
 }

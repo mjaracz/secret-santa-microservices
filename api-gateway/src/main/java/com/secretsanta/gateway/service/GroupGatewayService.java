@@ -39,6 +39,7 @@ public class GroupGatewayService {
     public Mono<CommandResponse> updateGroup(String groupId, UpdateGroupRequest request) {
         UpdateGroupCommand command = UpdateGroupCommand.builder()
                 .groupId(groupId)
+                .requestedBy(request.getRequestedBy())
                 .name(request.getName())
                 .description(request.getDescription())
                 .maxMembers(request.getMaxMembers())
@@ -61,6 +62,7 @@ public class GroupGatewayService {
     public Mono<CommandResponse> addMember(String groupId, AddMemberRequest request) {
         AddMemberCommand command = AddMemberCommand.builder()
                 .groupId(groupId)
+                .requestedBy(request.getRequestedBy())
                 .userId(request.getUserId())
                 .userEmail(request.getUserEmail())
                 .userName(request.getUserName())

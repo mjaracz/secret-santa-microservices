@@ -42,7 +42,10 @@ class DrawServiceTest {
 
     @BeforeEach
     void setUp() {
-        drawService = new DrawService(groupRepository, drawAssignmentRepository);
+        drawService = new DrawService(
+                groupRepository,
+                drawAssignmentRepository,
+                new GroupAuthorizationService());
     }
 
     @Test

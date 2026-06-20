@@ -23,7 +23,12 @@ import java.util.UUID;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "commandType")
+@JsonTypeInfo(
+		use = JsonTypeInfo.Id.NAME,
+		include = JsonTypeInfo.As.PROPERTY,
+		property = "commandType",
+		visible = true
+)
 @JsonSubTypes({
 		@JsonSubTypes.Type(value = CreateUserCommand.class, name = "CREATE_USER"),
 		@JsonSubTypes.Type(value = UpdateUserCommand.class, name = "UPDATE_USER"),

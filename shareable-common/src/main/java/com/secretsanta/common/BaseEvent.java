@@ -21,7 +21,12 @@ import java.util.UUID;
 @SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "eventType")
+@JsonTypeInfo(
+		use = JsonTypeInfo.Id.NAME,
+		include = JsonTypeInfo.As.PROPERTY,
+		property = "eventType",
+		visible = true
+)
 @JsonSubTypes({
 		@JsonSubTypes.Type(value = UserCreatedEvent.class, name = "USER_CREATED"),
 		@JsonSubTypes.Type(value = GroupCreatedEvent.class, name = "GROUP_CREATED"),

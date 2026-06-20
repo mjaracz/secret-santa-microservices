@@ -3,7 +3,9 @@ package com.secretsanta.gateway.controller;
 import com.secretsanta.gateway.dto.CommandResponse;
 import com.secretsanta.gateway.dto.CreateUserRequest;
 import com.secretsanta.gateway.service.UserGatewayService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,8 +22,14 @@ public class UserController {
 
     @PostMapping
     public Mono<ResponseEntity<CommandResponse>> createUser(
-            @RequestBody CreateUserRequest request) {
+            @Valid @RequestBody CreateUserRequest request
+    ) {
         return userGatewayService.createUser(request)
-                .map(ResponseMapper::toResponseEntity);
+                .map(response ->
+                        ResponseMapper.toResponseEntity(
+                                response,
+                                HttpStatus.CREATED
+                        )
+                );
     }
 }

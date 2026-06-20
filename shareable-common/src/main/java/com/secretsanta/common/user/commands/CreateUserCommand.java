@@ -20,13 +20,21 @@ public class CreateUserCommand extends BaseCommand {
 
 	@NotBlank(message = "Email is required")
 	@Email(message = "Invalid email format")
+	@Size(max = 320, message = "Email must not exceed 320 characters")
 	private String email;
 
 	@NotBlank(message = "Name is required")
-	@Size(min = 2, max = 255, message = "Name must be between 2 and 255 characters")
+	@Size(
+		min = 2,
+		max = 255,
+		message = "Name must be between 2 and 255 characters"
+	)
 	private String name;
 
 	@NotBlank(message = "Password is required")
-	@Size(min = 8, message = "Password must be at least 8 characters")
+	@Size(
+		min = 12,
+		message = "Password must be at least 12 characters"
+	)
 	private String password;
 }

@@ -11,7 +11,7 @@ import com.secretsanta.user.entity.User;
 @Repository
 public interface UserRepository extends JpaRepository<User, UUID> {
 
-  Optional<User> findByEmail(String email);
+  boolean existsByEmailNormalized(String emailNormalized);
 
-  boolean existsByEmail(String email);
+  Optional<User> findByEmailNormalized(String emailNormalized);
 }
