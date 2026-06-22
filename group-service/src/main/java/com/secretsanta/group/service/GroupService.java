@@ -40,10 +40,10 @@ public class GroupService {
     public GroupCreatedEvent createGroup(CreateGroupCommand command) {
         requireCommand(command);
         requireText(command.getName(), "Group name is required");
-        requireText(command.getOwnerId(), "Owner ID is required");
         validateMaxMembers(command.getMaxMembers());
 
-        if (groupRepository.existsByNameAndOwnerId(command.getName(), command.getOwnerId())) {
+        String ownerId = authorizationService.requireActor(command);
+        if (groupRepository.existsByNameAndOwnerId(command.getName(), ownerId)) {
             throw new IllegalArgumentException(
                     "Group with name '" + command.getName() + "' already exists for this owner");
         }
@@ -51,7 +51,7 @@ public class GroupService {
         Group group = Group.builder()
                 .name(command.getName())
                 .description(command.getDescription())
-                .ownerId(command.getOwnerId())
+                .ownerId(ownerId)
                 .maxMembers(command.getMaxMembers())
                 .build();
 
@@ -60,7 +60,7 @@ public class GroupService {
 
         GroupMember ownerMember = GroupMember.builder()
                 .group(savedGroup)
-                .userId(command.getOwnerId())
+                .userId(ownerId)
                 .userName("Owner")
                 .role("ADMIN")
                 .build();
@@ -87,7 +87,7 @@ public class GroupService {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found: " + command.getGroupId()));
 
-        authorizationService.requireOwnerForUpdate(group, command.getRequestedBy());
+        authorizationService.requireGroupAdmin(group, command);
 
         if (command.getName() == null
                 && command.getDescription() == null
@@ -139,7 +139,7 @@ public class GroupService {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found: " + command.getGroupId()));
 
-        authorizationService.requireOwnerForDelete(group, command.getOwnerId());
+        authorizationService.requireOwner(group, command);
 
         groupRepository.delete(group);
         log.info("Group deleted: {}", groupId);
@@ -159,7 +159,7 @@ public class GroupService {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found: " + command.getGroupId()));
 
-        authorizationService.requireOwnerForAddingMember(group, command.getRequestedBy());
+        authorizationService.requireGroupAdmin(group, command);
 
         requireText(command.getUserId(), "User ID is required");
         requireText(command.getUserName(), "User name is required");

@@ -19,6 +19,4 @@ public class DeleteGroupCommand extends BaseCommand {
 	@NotBlank(message = "Group ID is required")
 	private String groupId;
 
-	@NotBlank(message = "Owner ID is required")
-	private String ownerId;
 }

@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import com.secretsanta.common.user.UserAccountStatus;
+import com.secretsanta.common.user.UserRole;
 import jakarta.persistence.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -54,6 +55,16 @@ public class User {
   @Column(name = "email_verified_at")
   private Instant emailVerifiedAt;
 
+  @Builder.Default
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false, length = 32)
+  private UserRole role = UserRole.USER;
+
   @Version
   private long version;
+
+  public void verifyEmail(Instant verifiedAt) {
+    this.status = UserAccountStatus.ACTIVE;
+    this.emailVerifiedAt = verifiedAt;
+  }
 }

@@ -1,6 +1,7 @@
 package com.secretsanta.user.repository;
 
 import com.secretsanta.common.user.UserAccountStatus;
+import com.secretsanta.common.user.UserRole;
 import com.secretsanta.user.entity.User;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,7 +59,7 @@ class UserRepositoryIntegrationTest {
                 Long.class
         );
 
-        assertThat(successfulMigrations).isGreaterThanOrEqualTo(2L);
+        assertThat(successfulMigrations).isGreaterThanOrEqualTo(3L);
     }
 
     @Test
@@ -74,6 +75,7 @@ class UserRepositoryIntegrationTest {
         assertThat(savedUser.getStatus())
                 .isEqualTo(UserAccountStatus.PENDING_VERIFICATION);
         assertThat(savedUser.getVersion()).isZero();
+        assertThat(savedUser.getRole()).isEqualTo(UserRole.USER);
     }
 
     @Test

@@ -1,7 +1,12 @@
 package com.secretsanta.common;
 
 import com.secretsanta.common.user.UserAccountStatus;
+import com.secretsanta.common.user.UserRole;
+import com.secretsanta.common.user.commands.AuthenticateUserCommand;
 import com.secretsanta.common.user.commands.CreateUserCommand;
+import com.secretsanta.common.user.dto.AuthenticatedUserDto;
+import com.secretsanta.common.user.events.EmailVerificationRequestedEvent;
+import com.secretsanta.common.user.events.UserAuthenticatedEvent;
 import com.secretsanta.common.user.events.UserCreatedEvent;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
@@ -198,5 +203,77 @@ public class UserRegistrationContractTest {
 
 		assertThat(restoredEvent.getReason())
 			.isEqualTo("Email is already registered");
+	}
+
+	@Test
+	void recognizesAuthenticationCommandWithoutRawRefreshToken()
+		throws Exception {
+
+		AuthenticateUserCommand command = AuthenticateUserCommand.builder()
+			.email("user@example.com")
+			.password("correct-horse-battery-staple")
+			.refreshTokenHash("a".repeat(64))
+			.build();
+		command.initDefaults("AUTHENTICATE_USER");
+
+		String json = objectMapper.writeValueAsString(command);
+		BaseCommand restored = objectMapper.readValue(
+			json,
+			BaseCommand.class
+		);
+
+		assertThat(restored)
+			.isInstanceOf(AuthenticateUserCommand.class);
+		assertThat(json).contains("\"refreshTokenHash\"");
+		assertThat(json).doesNotContain("refresh_token");
+	}
+
+	@Test
+	void serializesAuthenticatedUserRole() throws Exception {
+		UserAuthenticatedEvent event = UserAuthenticatedEvent.builder()
+			.user(AuthenticatedUserDto.builder()
+				.userId("user-123")
+				.email("user@example.com")
+				.name("User")
+				.role(UserRole.USER)
+				.build())
+			.refreshTokenExpiresAt(1_800_000_000_000L)
+			.build();
+		event.initDefaults("USER_AUTHENTICATED");
+
+		BaseEvent restored = objectMapper.readValue(
+			objectMapper.writeValueAsString(event),
+			BaseEvent.class
+		);
+
+		assertThat(restored)
+			.isInstanceOf(UserAuthenticatedEvent.class);
+		assertThat(
+			((UserAuthenticatedEvent) restored).getUser().getRole()
+		).isEqualTo(UserRole.USER);
+	}
+
+	@Test
+	void keepsVerificationTokenOutOfUserCreatedEvent()
+		throws Exception {
+
+		UserCreatedEvent created = UserCreatedEvent.builder()
+			.userId("user-123")
+			.email("user@example.com")
+			.name("User")
+			.build();
+		created.initDefaults("USER_CREATED");
+		EmailVerificationRequestedEvent verification =
+			EmailVerificationRequestedEvent.builder()
+				.userId("user-123")
+				.verificationToken("raw-verification-token")
+				.build();
+		verification.initDefaults("EMAIL_VERIFICATION_REQUESTED");
+
+		assertThat(objectMapper.writeValueAsString(created))
+			.doesNotContain("raw-verification-token")
+			.doesNotContain("verificationToken");
+		assertThat(objectMapper.writeValueAsString(verification))
+			.contains("raw-verification-token");
 	}
 }

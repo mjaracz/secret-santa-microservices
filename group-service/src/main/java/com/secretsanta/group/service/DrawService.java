@@ -49,7 +49,7 @@ public class DrawService {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found: " + command.getGroupId()));
 
-        authorizationService.requireOwnerForDraw(group, command.getRequestedBy());
+        authorizationService.requireOwner(group, command);
         List<GroupMember> shuffled = getGroupMembers(group);
         Collections.shuffle(shuffled, random);
 
