@@ -1,6 +1,7 @@
 package com.secretsanta.user.service;
 
 import com.secretsanta.common.user.UserAccountStatus;
+import com.secretsanta.common.user.UserRole;
 import com.secretsanta.user.exception.UserCommandException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -34,9 +35,10 @@ public class UserService {
 
   private final UserRepository userRepository;
   private final PasswordEncoder passwordEncoder;
+  private final EmailVerificationService emailVerificationService;
 
   @Transactional
-  public UserCreatedEvent createUser(CreateUserCommand command) {
+  public UserRegistrationResult createUser(CreateUserCommand command) {
     String email = command.getEmail().trim();
     String emailNormalized = normalizeEmail(command.getEmail());
 
@@ -54,6 +56,7 @@ public class UserService {
       .passwordHash(passwordHash)
       .status(UserAccountStatus.PENDING_VERIFICATION)
       .emailVerifiedAt(null)
+      .role(UserRole.USER)
       .build();
 
     User savedUser;
@@ -70,7 +73,10 @@ public class UserService {
 
     log.info("User created with ID: {}", savedUser.getId());
 
-    return createUserCreatedEvent(savedUser);
+    return new UserRegistrationResult(
+      createUserCreatedEvent(savedUser),
+      emailVerificationService.issueFor(savedUser)
+    );
   }
 
   private String normalizeEmail(String email) {

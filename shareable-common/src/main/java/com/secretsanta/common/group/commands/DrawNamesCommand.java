@@ -19,6 +19,4 @@ public class DrawNamesCommand extends BaseCommand {
 	@NotBlank(message = "Group ID is required")
 	private String groupId;
 
-	@NotBlank(message = "Requested by (owner ID) is required")
-	private String requestedBy;
 }

@@ -28,5 +28,5 @@ public class UpdateGroupCommand extends BaseCommand {
 	private String description;
 
 	@Min(value = 3, message = "A group must have at least 3 members")
-	private int maxMembers;
+	private Integer maxMembers;
 }

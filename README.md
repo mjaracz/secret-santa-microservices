@@ -181,25 +181,27 @@ Content-Type: application/json
 }
 ```
 
-### Update Group
+### Update Group (requested only by the group owner)
 ```HTTP
 PUT /api/groups/{groupId} HTTP/1.1
 Content-Type: application/json
 
 {
+    "requestedBy": "e9123b90-180b-4378-a1d6-a51a03ec7657",
     "name": "EngineersUpdated",
     "description": "Group Zaktualizowana",
     "maxMembers": 10
 }
 ```
 
-### Add Member
+### Add Member (requested only by the group owner)
 ```HTTP
 POST /api/groups/{groupId}/members HTTP/1.1
 Content-Type: application/json
 
 {
-    "userId": "e9123b90-180b-4378-a1d6-a51a03ec7657",
+    "requestedBy": "e9123b90-180b-4378-a1d6-a51a03ec7657",
+    "userId": "265088b3-70eb-40cf-b632-00c289d117fc",
     "userEmail": "example@email.me",
     "userName": "Tom123",
     "role": "member"

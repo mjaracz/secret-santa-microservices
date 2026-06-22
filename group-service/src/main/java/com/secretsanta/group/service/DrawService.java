@@ -1,5 +1,6 @@
 package com.secretsanta.group.service;
 
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -28,19 +29,28 @@ public class DrawService {
 
     private final GroupRepository groupRepository;
     private final DrawAssignmentRepository drawAssignmentRepository;
+    private final GroupAuthorizationService authorizationService;
 
     @Transactional
     public DrawCompletedEvent drawNames(DrawNamesCommand command) {
-        return drawNames(command, new Random());
+        return drawNames(command, new SecureRandom());
     }
 
     @Transactional
     public DrawCompletedEvent drawNames(DrawNamesCommand command, Random random) {
+        if (command == null) {
+            throw new IllegalArgumentException("Command is required");
+        }
+        if (random == null) {
+            throw new IllegalArgumentException("Random generator is required");
+        }
+
         UUID groupId = UUID.fromString(command.getGroupId());
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found: " + command.getGroupId()));
 
-        List<GroupMember> shuffled = getGroupMembers(command, group);
+        authorizationService.requireOwner(group, command);
+        List<GroupMember> shuffled = getGroupMembers(group);
         Collections.shuffle(shuffled, random);
 
         List<DrawAssignment> assignments = new ArrayList<>();
@@ -81,11 +91,7 @@ public class DrawService {
         return event;
     }
 
-    private static List<GroupMember> getGroupMembers(DrawNamesCommand command, Group group) {
-        if (!group.getOwnerId().equals(command.getRequestedBy())) {
-            throw new IllegalArgumentException("Only the group owner can trigger a draw");
-        }
-
+    private static List<GroupMember> getGroupMembers(Group group) {
         if (group.isDrawn()) {
             throw new IllegalArgumentException("Draw has already been performed for this group");
         }

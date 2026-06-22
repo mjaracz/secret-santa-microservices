@@ -18,4 +18,5 @@ public class GroupUpdatedEvent extends BaseEvent {
 	private String groupId;
 	private String name;
 	private String description;
+	private int maxMembers;
 }

@@ -5,6 +5,7 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 import com.secretsanta.common.BaseCommand;
+import com.secretsanta.common.BaseEvent;
 import com.secretsanta.common.CommandFailedEvent;
 import com.secretsanta.common.group.commands.AddMemberCommand;
 import com.secretsanta.common.group.commands.CreateGroupCommand;
@@ -19,6 +20,10 @@ import com.secretsanta.common.group.events.MemberAddedEvent;
 import com.secretsanta.infrastructure.kafka.KafkaServiceBus;
 import com.secretsanta.group.service.DrawService;
 import com.secretsanta.group.service.GroupService;
+import com.secretsanta.group.exception.GroupCommandException;
+
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 @Component
 public class GroupCommandListener {
@@ -49,38 +54,55 @@ public class GroupCommandListener {
     }
 
     private void onCreateGroup(CreateGroupCommand command) {
-        GroupCreatedEvent event = groupService.createGroup(command);
-        event.setCorrelationId(command.getCommandId());
-        serviceBus.emitEvent(groupEventsTopic, event.getGroupId(), event);
+        handle(command, () -> groupService.createGroup(command), GroupCreatedEvent::getGroupId);
     }
 
     private void onUpdateGroup(UpdateGroupCommand command) {
-        GroupUpdatedEvent event = groupService.updateGroup(command);
-        event.setCorrelationId(command.getCommandId());
-        serviceBus.emitEvent(groupEventsTopic, event.getGroupId(), event);
+        handle(command, () -> groupService.updateGroup(command), GroupUpdatedEvent::getGroupId);
     }
 
     private void onDeleteGroup(DeleteGroupCommand command) {
-        GroupDeletedEvent event = groupService.deleteGroup(command);
-        event.setCorrelationId(command.getCommandId());
-        serviceBus.emitEvent(groupEventsTopic, event.getGroupId(), event);
+        handle(command, () -> groupService.deleteGroup(command), GroupDeletedEvent::getGroupId);
     }
 
     private void onAddMember(AddMemberCommand command) {
-        MemberAddedEvent event = groupService.addMember(command);
-        event.setCorrelationId(command.getCommandId());
-        serviceBus.emitEvent(groupEventsTopic, event.getGroupId(), event);
+        handle(command, () -> groupService.addMember(command), MemberAddedEvent::getGroupId);
     }
 
     private void onDrawNames(DrawNamesCommand command) {
-        DrawCompletedEvent event = drawService.drawNames(command);
-        event.setCorrelationId(command.getCommandId());
-        serviceBus.emitEvent(groupEventsTopic, event.getGroupId(), event);
+        handle(command, () -> drawService.drawNames(command), DrawCompletedEvent::getGroupId);
+    }
+
+    private <T extends BaseEvent> void handle(
+            BaseCommand command,
+            Supplier<T> handler,
+            Function<T, String> keyExtractor
+    ) {
+        try {
+            T event = handler.get();
+            event.setCorrelationId(command.getCommandId());
+            serviceBus.emitEvent(groupEventsTopic, keyExtractor.apply(event), event);
+        } catch (GroupCommandException exception) {
+            emitFailure(
+                    command,
+                    exception.getErrorCode(),
+                    exception.getMessage()
+            );
+        }
     }
 
     private void emitFailure(BaseCommand command, String reason) {
+        emitFailure(command, null, reason);
+    }
+
+    private void emitFailure(
+            BaseCommand command,
+            String errorCode,
+            String reason
+    ) {
         CommandFailedEvent failedEvent = CommandFailedEvent.builder()
                 .correlationId(command.getCommandId())
+                .errorCode(errorCode)
                 .reason(reason)
                 .originalCommandType(command.getCommandType())
                 .build();

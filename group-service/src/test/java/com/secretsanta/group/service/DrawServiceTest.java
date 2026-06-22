@@ -3,10 +3,13 @@ package com.secretsanta.group.service;
 import com.secretsanta.common.group.commands.DrawNamesCommand;
 import com.secretsanta.common.group.dto.DrawAssignmentDto;
 import com.secretsanta.common.group.events.DrawCompletedEvent;
+import com.secretsanta.common.user.UserRole;
+import com.secretsanta.group.exception.GroupCommandException;
 import com.secretsanta.group.entity.DrawAssignment;
 import com.secretsanta.group.entity.Group;
 import com.secretsanta.group.entity.GroupMember;
 import com.secretsanta.group.repository.DrawAssignmentRepository;
+import com.secretsanta.group.repository.GroupMemberRepository;
 import com.secretsanta.group.repository.GroupRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +35,9 @@ class DrawServiceTest {
     @Mock
     private DrawAssignmentRepository drawAssignmentRepository;
 
+    @Mock
+    private GroupMemberRepository groupMemberRepository;
+
     @Captor
     private ArgumentCaptor<List<DrawAssignment>> assignmentsCaptor;
 
@@ -42,7 +48,10 @@ class DrawServiceTest {
 
     @BeforeEach
     void setUp() {
-        drawService = new DrawService(groupRepository, drawAssignmentRepository);
+        drawService = new DrawService(
+                groupRepository,
+                drawAssignmentRepository,
+                new GroupAuthorizationService(groupMemberRepository));
     }
 
     @Test
@@ -52,7 +61,8 @@ class DrawServiceTest {
 
         DrawNamesCommand command = DrawNamesCommand.builder()
                 .groupId(GROUP_ID)
-                .requestedBy(OWNER_ID)
+                .actorId(OWNER_ID)
+                .actorRoles(Set.of(UserRole.USER))
                 .build();
         command.initDefaults("DRAW_NAMES");
 
@@ -82,7 +92,8 @@ class DrawServiceTest {
 
         DrawNamesCommand command = DrawNamesCommand.builder()
                 .groupId(GROUP_ID)
-                .requestedBy(OWNER_ID)
+                .actorId(OWNER_ID)
+                .actorRoles(Set.of(UserRole.USER))
                 .build();
         command.initDefaults("DRAW_NAMES");
 
@@ -99,7 +110,8 @@ class DrawServiceTest {
 
         DrawNamesCommand command = DrawNamesCommand.builder()
                 .groupId(GROUP_ID)
-                .requestedBy(OWNER_ID)
+                .actorId(OWNER_ID)
+                .actorRoles(Set.of(UserRole.USER))
                 .build();
         command.initDefaults("DRAW_NAMES");
 
@@ -115,13 +127,17 @@ class DrawServiceTest {
 
         DrawNamesCommand command = DrawNamesCommand.builder()
                 .groupId(GROUP_ID)
-                .requestedBy("not-the-owner")
+                .actorId("not-the-owner")
+                .actorRoles(Set.of(UserRole.USER))
                 .build();
         command.initDefaults("DRAW_NAMES");
 
         assertThatThrownBy(() -> drawService.drawNames(command, new Random(42)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Only the group owner");
+                .isInstanceOfSatisfying(
+                        GroupCommandException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo("AUTH_FORBIDDEN")
+                );
     }
 
     @Test
@@ -131,7 +147,8 @@ class DrawServiceTest {
 
         DrawNamesCommand command = DrawNamesCommand.builder()
                 .groupId(GROUP_ID)
-                .requestedBy(OWNER_ID)
+                .actorId(OWNER_ID)
+                .actorRoles(Set.of(UserRole.USER))
                 .build();
         command.initDefaults("DRAW_NAMES");
 

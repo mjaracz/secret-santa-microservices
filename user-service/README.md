@@ -176,54 +176,46 @@ public class UserCommandListener {
 
 ---
 
-## 💾 Database Schema (PostgreSQL)
+## 💾 Persistence model (PostgreSQL)
 
-**Database Name:** `user_db`  
-**Port:** `5432` (in docker-compose)
-```sql
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    password_hash VARCHAR(255),
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
+**Database:** `user_db`
+**Port:** `5432`
 
--- Indexes
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_created_at ON users(created_at DESC);
-```
+Flyway owns the schema lifecycle. Hibernate only validates mappings through
+`spring.jpa.hibernate.ddl-auto=validate`; it does not create or update tables.
 
-**Entity Example:**
-```java
-@Entity
-@Table(name = "users")
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class User {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private String id;
-    
-    @Column(nullable = false, unique = true)
-    private String email;
-    
-    @Column(nullable = false)
-    private String name;
-    
-    @Column(name = "password_hash")
-    private String passwordHash;
-    
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
-    
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
-}
-```
+| Migration | Responsibility |
+|-----------|----------------|
+| `V1__create_users_table.sql` | Historical base `users` table |
+| `V2__add_registration_status.sql` | Normalized unique email, account status, verification timestamp and optimistic-lock version |
+| `V3__add_authentication_and_verification.sql` | User role, verification tokens and refresh-session families |
+
+The persistence boundary consists of three JPA repositories:
+
+- `UserRepository` — account identity and normalized e-mail uniqueness;
+- `EmailVerificationTokenRepository` — expiring, one-time verification tokens;
+- `RefreshSessionRepository` — refresh-token rotation, family revocation and reuse detection.
+
+Authentication services use Spring transactions. Refresh and revoke operations
+lock the selected session row before changing its token family. Database unique
+constraints remain the final protection against concurrent registrations and
+duplicate token hashes.
+
+### Why the relational latency cost is accepted
+
+The measured end-to-end overhead over the MongoDB implementation was about 9 ms
+for successful sign-in, 14 ms for refresh and 17 ms for registration. These paths
+still spend more time in BCrypt or the Kafka request-reply flow than in the
+database itself.
+
+MongoDB can atomically update a single embedded user document, but refresh-session
+history and verification tokens are independently growing records. PostgreSQL
+keeps them bounded away from the user row and provides explicit transactions,
+row locking, foreign keys, unique constraints, targeted indexes and predictable
+cleanup/audit queries. For this identity domain those guarantees justify the
+measured latency cost.
+
+See the complete [persistence latency comparison](../docs/user-service-persistence-latency-comparison.md).
 
 ---
 
@@ -237,7 +229,7 @@ public class User {
 
 1. **Start infrastructure:**
 ```bash
-   docker-compose up -d postgres-user kafka zookeeper
+   docker compose up -d postgres-user kafka zookeeper
 ```
 
 2. **Run service:**
@@ -248,7 +240,7 @@ public class User {
 
 3. **Verify database:**
 ```bash
-   docker exec -it postgres-user psql -U user_admin -d user_db
+   docker compose exec postgres-user psql -U user_admin -d user_db
    \dt  # List tables
    SELECT * FROM users;
 ```
@@ -268,40 +260,15 @@ public class User {
 
 ## ⚙️ Configuration
 
-`application.yml`:
-```yaml
-server:
-  port: 8081  # Internal only (not exposed)
+`application.properties` reads secrets and connection details from environment
+variables. For local development, copy `application-local.example.properties` to
+the ignored `application-local.properties` file.
 
-spring:
-  application:
-    name: user-service
-
-  datasource:
-    url: jdbc:postgresql://localhost:5432/user_db
-    username: user_admin
-    password: user_pass
-    driver-class-name: org.postgresql.Driver
-
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: true
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-
-  kafka:
-    bootstrap-servers: localhost:9092
-    consumer:
-      group-id: user-service-group
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: "*"
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+```properties
+DB_URL=jdbc:postgresql://localhost:5432/user_db
+DB_USERNAME=user_admin
+DB_PASSWORD=user_pass
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
 ```
 
 ---
@@ -320,8 +287,8 @@ spring:
 
 ## 🔮 Future Enhancements
 
-- [ ] Password hashing (BCrypt/Argon2)
-- [ ] Email verification workflow
+- [x] Password hashing with BCrypt
+- [x] Email verification workflow
 - [ ] OAuth2 integration (Google, GitHub)
 - [ ] User avatar storage (S3)
 - [ ] Two-factor authentication

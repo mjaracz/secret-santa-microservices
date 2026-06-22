@@ -18,9 +18,6 @@ public class CreateGroupRequest {
     @Size(max = 1000, message = "Description must be at most 1000 characters")
     private String description;
 
-    @NotBlank(message = "Owner ID is required")
-    private String ownerId;
-
     @Min(value = 3, message = "A group must have at least 3 members")
     private int maxMembers;
 }
