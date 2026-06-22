@@ -4,6 +4,18 @@ Multi-threaded distributed microservices architecture for demonstration / educat
 <br/> 
 </br>
 
+## Kafka delivery semantics
+
+Kafka communication uses **at-least-once delivery**. Producers wait for acknowledgements from all
+in-sync replicas and enable Kafka idempotence and retries. Consumers disable auto-commit and commit
+an offset only after a record has been handled successfully. Failed records are retried twice with
+a one-second backoff and are then published to a topic named `<source-topic>.DLT` on the same
+partition. A failure to publish either a domain message or a dead-letter record is propagated rather
+than treated as success.
+
+At-least-once delivery can redeliver a record after a process or network failure, so domain handlers
+must remain idempotent and messages must keep their stable command/event identifiers.
+
 **Technology stack**:
 - Spring Boot 4.0.2 
 - Java 25 

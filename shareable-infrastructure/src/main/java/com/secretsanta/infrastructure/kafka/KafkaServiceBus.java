@@ -4,7 +4,6 @@ import com.secretsanta.common.BaseCommand;
 import com.secretsanta.common.BaseEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.retry.backoff.ExponentialBackOffPolicy;
 import org.springframework.retry.policy.SimpleRetryPolicy;
 import org.springframework.retry.support.RetryTemplate;
 import tools.jackson.databind.ObjectMapper;
@@ -13,6 +12,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class KafkaServiceBus {
@@ -88,41 +88,50 @@ public class KafkaServiceBus {
     }
 
     public void handleCommandMessage(String json, FailureEmitter failureEmitter) {
-        BaseCommand command = null;
+        final BaseCommand command;
         try {
             command = objectMapper.readValue(json, BaseCommand.class);
-            log.info("Received command: type={}, id={}", command.getCommandType(), command.getCommandId());
-            final BaseCommand cmd = command;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("Cannot deserialize Kafka command", exception);
+        }
+
+        log.info("Received command: type={}, id={}", command.getCommandType(), command.getCommandId());
+        try {
             retryTemplate.execute(context -> {
-                dispatchCommand(cmd);
+                dispatchCommand(command);
                 return null;
             });
         } catch (IllegalArgumentException e) {
             log.error("Business rule violation: {}", e.getMessage());
-            if (failureEmitter != null && command != null) {
+            if (failureEmitter != null) {
                 failureEmitter.emit(command, e.getMessage());
+                return;
             }
-        } catch (Exception e) {
+            throw e;
+        } catch (RuntimeException e) {
             log.error("Error processing command after retries exhausted", e);
-            if (failureEmitter != null && command != null) {
-                failureEmitter.emit(command, "Internal error: " + e.getMessage());
-            }
+            throw e;
         }
     }
 
     public void handleEventMessage(String json) {
+        final BaseEvent event;
         try {
-            BaseEvent event = objectMapper.readValue(json, BaseEvent.class);
-            log.info("Received event: type={}, id={}", event.getEventType(), event.getEventId());
-            completeReply(event);
+            event = objectMapper.readValue(json, BaseEvent.class);
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("Cannot deserialize Kafka event", exception);
+        }
+
+        log.info("Received event: type={}, id={}", event.getEventType(), event.getEventId());
+        try {
             retryTemplate.execute(context -> {
                 dispatchEvent(event);
                 return null;
             });
-        } catch (IllegalArgumentException e) {
-            log.error("Business rule violation: {}", e.getMessage());
-        } catch (Exception e) {
+            completeReply(event);
+        } catch (RuntimeException e) {
             log.error("Error processing event after retries exhausted", e);
+            throw e;
         }
     }
 
@@ -146,7 +155,11 @@ public class KafkaServiceBus {
             throw new IllegalStateException("PendingReplyStore not configured — sendAndReceive not available");
         }
         CompletableFuture<BaseEvent> future = replyStore.register(command.getCommandId(), timeout);
-        emitCommand(topic, key, command);
+        try {
+            emitCommand(topic, key, command);
+        } catch (RuntimeException exception) {
+            future.completeExceptionally(exception);
+        }
         return future;
     }
 
@@ -161,7 +174,8 @@ public class KafkaServiceBus {
         if (entry != null) {
             entry.dispatch(command);
         } else {
-            log.warn("No handler registered for command type: {}", command.getClass().getSimpleName());
+            throw new IllegalStateException(
+                    "No handler registered for command type: " + command.getClass().getSimpleName());
         }
     }
 
@@ -177,21 +191,24 @@ public class KafkaServiceBus {
     private void publish(String topic, String key, Object message) {
         try {
             String json = objectMapper.writeValueAsString(message);
-            kafkaTemplate.send(topic, key, json);
+            kafkaTemplate.send(topic, key, json).get(10, TimeUnit.SECONDS);
             log.info("Published message: key={}, topic={}", key, topic);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                    "Interrupted while publishing message: key=" + key + ", topic=" + topic,
+                    e);
         } catch (Exception e) {
             log.error("Error publishing message: key={}, topic={}", key, topic, e);
+            throw new IllegalStateException(
+                    "Kafka did not acknowledge message: key=" + key + ", topic=" + topic,
+                    e);
         }
     }
 
     private static RetryTemplate buildDefaultRetryTemplate() {
         RetryTemplate template = new RetryTemplate();
-        ExponentialBackOffPolicy backOff = new ExponentialBackOffPolicy();
-        backOff.setInitialInterval(100L);
-        backOff.setMultiplier(2.0);
-        backOff.setMaxInterval(1000L);
-        template.setBackOffPolicy(backOff);
-        template.setRetryPolicy(new SimpleRetryPolicy(3,
+        template.setRetryPolicy(new SimpleRetryPolicy(1,
                 Map.of(Exception.class, true, IllegalArgumentException.class, false), true));
         return template;
     }

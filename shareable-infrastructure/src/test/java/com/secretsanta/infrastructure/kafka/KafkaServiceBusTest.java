@@ -16,9 +16,11 @@ import org.springframework.retry.support.RetryTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,6 +41,8 @@ class KafkaServiceBusTest {
         retryTemplate.setRetryPolicy(new SimpleRetryPolicy(3,
                 Map.of(Exception.class, true, IllegalArgumentException.class, false), true));
         serviceBus = new KafkaServiceBus(kafkaTemplate, objectMapper, retryTemplate);
+        lenient().when(kafkaTemplate.send(anyString(), anyString(), anyString()))
+                .thenReturn(CompletableFuture.completedFuture(null));
     }
 
     @Test
@@ -65,7 +69,7 @@ class KafkaServiceBusTest {
     }
 
     @Test
-    void logs_warning_for_unregistered_command() throws Exception {
+    void rejects_unregistered_command_so_listener_can_retry_or_dead_letter() throws Exception {
         CreateUserCommand command = CreateUserCommand.builder()
                 .email("test@example.com")
                 .name("Test")
@@ -76,7 +80,9 @@ class KafkaServiceBusTest {
         String json = "{\"commandType\":\"CREATE_USER\"}";
         when(objectMapper.readValue(json, BaseCommand.class)).thenReturn(command);
 
-        serviceBus.handleCommandMessage(json);
+        assertThatThrownBy(() -> serviceBus.handleCommandMessage(json))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("No handler registered");
     }
 
     @Test
@@ -169,7 +175,9 @@ class KafkaServiceBusTest {
             throw new IllegalArgumentException("Email already registered");
         });
 
-        serviceBus.handleCommandMessage(json);
+        assertThatThrownBy(() -> serviceBus.handleCommandMessage(json))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Email already registered");
 
         assertThat(callCount.get()).isEqualTo(1);
     }
@@ -199,7 +207,7 @@ class KafkaServiceBusTest {
     }
 
     @Test
-    void exhausts_retries_and_logs_error() throws Exception {
+    void exhausts_retries_and_propagates_error_for_kafka_redelivery() throws Exception {
         CreateUserCommand command = CreateUserCommand.builder()
                 .email("test@example.com")
                 .name("Test")
@@ -216,7 +224,9 @@ class KafkaServiceBusTest {
             throw new RuntimeException("Persistent failure");
         });
 
-        serviceBus.handleCommandMessage(json);
+        assertThatThrownBy(() -> serviceBus.handleCommandMessage(json))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Persistent failure");
 
         assertThat(callCount.get()).isEqualTo(3);
     }
@@ -227,8 +237,23 @@ class KafkaServiceBusTest {
         when(objectMapper.readValue(badJson, BaseCommand.class))
                 .thenThrow(new RuntimeException("Deserialization failed"));
 
-        serviceBus.handleCommandMessage(badJson);
+        assertThatThrownBy(() -> serviceBus.handleCommandMessage(badJson))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Cannot deserialize Kafka command");
 
         verifyNoInteractions(kafkaTemplate);
+    }
+
+    @Test
+    void propagates_publish_failure_when_broker_does_not_acknowledge() throws Exception {
+        UserCreatedEvent event = UserCreatedEvent.builder().userId("user-123").build();
+        event.initDefaults("USER_CREATED");
+        when(objectMapper.writeValueAsString(event)).thenReturn("{}");
+        when(kafkaTemplate.send("user.events", "user-123", "{}"))
+                .thenReturn(CompletableFuture.failedFuture(new RuntimeException("broker unavailable")));
+
+        assertThatThrownBy(() -> serviceBus.emitEvent("user.events", "user-123", event))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Kafka did not acknowledge");
     }
 }

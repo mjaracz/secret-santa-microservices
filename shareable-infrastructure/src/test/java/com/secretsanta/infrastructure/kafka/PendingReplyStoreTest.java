@@ -85,4 +85,19 @@ class PendingReplyStoreTest {
         assertThat(first).isTrue();
         assertThat(second).isFalse();
     }
+
+    @Test
+    void timeoutOfOlderRegistrationDoesNotRemoveNewerReply() throws Exception {
+        CompletableFuture<BaseEvent> older = store.register("corr-1", Duration.ofMillis(50));
+        CompletableFuture<BaseEvent> newer = store.register("corr-1", Duration.ofSeconds(1));
+
+        assertThatThrownBy(older::get)
+                .isInstanceOf(ExecutionException.class)
+                .hasCauseInstanceOf(TimeoutException.class);
+        assertThat(store.pendingCount()).isEqualTo(1);
+
+        GroupCreatedEvent event = GroupCreatedEvent.builder().groupId("g1").build();
+        assertThat(store.complete("corr-1", event)).isTrue();
+        assertThat(newer.get()).isEqualTo(event);
+    }
 }
