@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +29,8 @@ import com.secretsanta.common.group.events.GroupCreatedEvent;
 import com.secretsanta.common.group.events.GroupDeletedEvent;
 import com.secretsanta.common.group.events.GroupUpdatedEvent;
 import com.secretsanta.common.group.events.MemberAddedEvent;
+import com.secretsanta.common.user.UserRole;
+import com.secretsanta.group.exception.GroupCommandException;
 import com.secretsanta.group.entity.Group;
 import com.secretsanta.group.entity.GroupMember;
 import com.secretsanta.group.repository.GroupMemberRepository;
@@ -59,7 +62,7 @@ class GroupServiceTest {
         groupService = new GroupService(
                 groupRepository,
                 groupMemberRepository,
-                new GroupAuthorizationService());
+                new GroupAuthorizationService(groupMemberRepository));
     }
 
     @Test
@@ -106,14 +109,15 @@ class GroupServiceTest {
                 .hasMessage("Group with name 'Family' already exists for this owner");
 
         verify(groupRepository, never()).save(any(Group.class));
-        verifyNoInteractions(groupMemberRepository);
+        verify(groupMemberRepository, never()).save(any(GroupMember.class));
     }
 
     @Test
     void rejectsGroupWithTooSmallMemberLimit() {
         CreateGroupCommand command = CreateGroupCommand.builder()
                 .name("Family")
-                .ownerId(OWNER_ID)
+                .actorId(OWNER_ID)
+                .actorRoles(Set.of(UserRole.USER))
                 .maxMembers(2)
                 .build();
 
@@ -131,7 +135,8 @@ class GroupServiceTest {
 
         UpdateGroupCommand command = UpdateGroupCommand.builder()
                 .groupId(GROUP_ID.toString())
-                .requestedBy(OWNER_ID)
+                .actorId(OWNER_ID)
+                .actorRoles(Set.of(UserRole.USER))
                 .name("Friends")
                 .description("New description")
                 .maxMembers(12)
@@ -157,7 +162,8 @@ class GroupServiceTest {
 
         UpdateGroupCommand command = UpdateGroupCommand.builder()
                 .groupId(GROUP_ID.toString())
-                .requestedBy(OWNER_ID)
+                .actorId(OWNER_ID)
+                .actorRoles(Set.of(UserRole.USER))
                 .description("Only description changed")
                 .build();
 
@@ -173,7 +179,8 @@ class GroupServiceTest {
         when(groupRepository.findById(GROUP_ID)).thenReturn(Optional.empty());
         UpdateGroupCommand command = UpdateGroupCommand.builder()
                 .groupId(GROUP_ID.toString())
-                .requestedBy(OWNER_ID)
+                .actorId(OWNER_ID)
+                .actorRoles(Set.of(UserRole.USER))
                 .name("Friends")
                 .build();
 
@@ -190,13 +197,17 @@ class GroupServiceTest {
         when(groupRepository.findById(GROUP_ID)).thenReturn(Optional.of(group));
         UpdateGroupCommand command = UpdateGroupCommand.builder()
                 .groupId(GROUP_ID.toString())
-                .requestedBy("another-user")
+                .actorId("another-user")
+                .actorRoles(Set.of(UserRole.USER))
                 .name("Friends")
                 .build();
 
         assertThatThrownBy(() -> groupService.updateGroup(command))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Only the group owner can update the group");
+                .isInstanceOfSatisfying(
+                        GroupCommandException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo("AUTH_FORBIDDEN")
+                );
 
         verify(groupRepository, never()).save(any(Group.class));
     }
@@ -209,7 +220,8 @@ class GroupServiceTest {
                 .thenReturn(true);
         UpdateGroupCommand command = UpdateGroupCommand.builder()
                 .groupId(GROUP_ID.toString())
-                .requestedBy(OWNER_ID)
+                .actorId(OWNER_ID)
+                .actorRoles(Set.of(UserRole.USER))
                 .name("Friends")
                 .build();
 
@@ -231,7 +243,8 @@ class GroupServiceTest {
         when(groupRepository.findById(GROUP_ID)).thenReturn(Optional.of(group));
         UpdateGroupCommand command = UpdateGroupCommand.builder()
                 .groupId(GROUP_ID.toString())
-                .requestedBy(OWNER_ID)
+                .actorId(OWNER_ID)
+                .actorRoles(Set.of(UserRole.USER))
                 .maxMembers(3)
                 .build();
 
@@ -248,7 +261,8 @@ class GroupServiceTest {
         when(groupRepository.findById(GROUP_ID)).thenReturn(Optional.of(group));
         DeleteGroupCommand command = DeleteGroupCommand.builder()
                 .groupId(GROUP_ID.toString())
-                .ownerId(OWNER_ID)
+                .actorId(OWNER_ID)
+                .actorRoles(Set.of(UserRole.USER))
                 .build();
 
         GroupDeletedEvent event = groupService.deleteGroup(command);
@@ -264,12 +278,16 @@ class GroupServiceTest {
         when(groupRepository.findById(GROUP_ID)).thenReturn(Optional.of(group));
         DeleteGroupCommand command = DeleteGroupCommand.builder()
                 .groupId(GROUP_ID.toString())
-                .ownerId("another-user")
+                .actorId("another-user")
+                .actorRoles(Set.of(UserRole.USER))
                 .build();
 
         assertThatThrownBy(() -> groupService.deleteGroup(command))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Only the group owner can delete the group");
+                .isInstanceOfSatisfying(
+                        GroupCommandException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo("AUTH_FORBIDDEN")
+                );
 
         verify(groupRepository, never()).delete(any(Group.class));
     }
@@ -339,13 +357,16 @@ class GroupServiceTest {
         Group group = existingGroup();
         when(groupRepository.findById(GROUP_ID)).thenReturn(Optional.of(group));
         AddMemberCommand command = addMemberCommand(null);
-        command.setRequestedBy("another-user");
+        command.setActorId("another-user");
 
         assertThatThrownBy(() -> groupService.addMember(command))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Only the group owner can add members to the group");
+                .isInstanceOfSatisfying(
+                        GroupCommandException.class,
+                        exception -> assertThat(exception.getErrorCode())
+                                .isEqualTo("AUTH_FORBIDDEN")
+                );
 
-        verifyNoInteractions(groupMemberRepository);
+        verify(groupMemberRepository, never()).save(any(GroupMember.class));
     }
 
     @Test
@@ -392,7 +413,8 @@ class GroupServiceTest {
         return CreateGroupCommand.builder()
                 .name("Family")
                 .description("Christmas draw")
-                .ownerId(OWNER_ID)
+                .actorId(OWNER_ID)
+                .actorRoles(Set.of(UserRole.USER))
                 .maxMembers(8)
                 .build();
     }
@@ -400,7 +422,8 @@ class GroupServiceTest {
     private AddMemberCommand addMemberCommand(String role) {
         return AddMemberCommand.builder()
                 .groupId(GROUP_ID.toString())
-                .requestedBy(OWNER_ID)
+                .actorId(OWNER_ID)
+                .actorRoles(Set.of(UserRole.USER))
                 .userId("user-002")
                 .userEmail("user@example.com")
                 .userName("Jane Doe")

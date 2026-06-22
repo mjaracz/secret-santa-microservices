@@ -47,7 +47,6 @@ public class GroupGatewayService {
     ) {
         UpdateGroupCommand command = UpdateGroupCommand.builder()
                 .groupId(groupId)
-                .requestedBy(request.getRequestedBy())
                 .name(request.getName())
                 .description(request.getDescription())
                 .maxMembers(request.getMaxMembers())
@@ -80,7 +79,6 @@ public class GroupGatewayService {
     ) {
         AddMemberCommand command = AddMemberCommand.builder()
                 .groupId(groupId)
-                .requestedBy(request.getRequestedBy())
                 .userId(request.getUserId())
                 .userEmail(request.getUserEmail())
                 .userName(request.getUserName())

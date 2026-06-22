@@ -1,70 +1,111 @@
 package com.secretsanta.group.service;
 
+import com.secretsanta.common.group.commands.UpdateGroupCommand;
+import com.secretsanta.common.user.UserRole;
+import com.secretsanta.group.entity.Group;
+import com.secretsanta.group.entity.GroupMember;
+import com.secretsanta.group.exception.GroupCommandException;
+import com.secretsanta.group.repository.GroupMemberRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Optional;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
 
-import org.junit.jupiter.api.Test;
-
-import com.secretsanta.group.entity.Group;
-
+@ExtendWith(MockitoExtension.class)
 class GroupAuthorizationServiceTest {
 
-    private final GroupAuthorizationService authorizationService = new GroupAuthorizationService();
+    @Mock
+    private GroupMemberRepository groupMemberRepository;
 
-    @Test
-    void allowsOwnerToPerformOperation() {
-        Group group = Group.builder().ownerId("owner-001").build();
+    private GroupAuthorizationService authorizationService;
 
-        assertThatCode(() -> authorizationService.requireOwnerForUpdate(
-                group, "owner-001"))
-                .doesNotThrowAnyException();
+    @BeforeEach
+    void setUp() {
+        authorizationService = new GroupAuthorizationService(
+                groupMemberRepository
+        );
     }
 
     @Test
-    void rejectsNonOwnerWithOperationSpecificMessage() {
+    void allowsGroupOwner() {
         Group group = Group.builder().ownerId("owner-001").build();
 
-        assertThatThrownBy(() -> authorizationService.requireOwnerForUpdate(
-                group, "another-user"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Only the group owner can update the group");
+        assertThatCode(() -> authorizationService.requireOwner(
+                group,
+                command("owner-001", UserRole.USER)
+        )).doesNotThrowAnyException();
     }
 
     @Test
-    void rejectsMissingRequesterWithoutThrowingNullPointerException() {
+    void allowsGlobalAdminForOwnerOperation() {
         Group group = Group.builder().ownerId("owner-001").build();
 
-        assertThatThrownBy(() -> authorizationService.requireOwnerForDelete(
-                group, null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Only the group owner can delete the group");
+        assertThatCode(() -> authorizationService.requireOwner(
+                group,
+                command("admin-001", UserRole.ADMIN)
+        )).doesNotThrowAnyException();
     }
 
     @Test
-    void rejectsBlankRequester() {
+    void allowsGroupAdminForAdministrativeOperation() {
         Group group = Group.builder().ownerId("owner-001").build();
+        GroupMember member = GroupMember.builder().role("ADMIN").build();
+        when(groupMemberRepository.findByGroupAndUserId(group, "member-001"))
+                .thenReturn(Optional.of(member));
 
-        assertThatThrownBy(() -> authorizationService.requireOwnerForDraw(
-                group, "  "))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Only the group owner can trigger a draw");
+        assertThatCode(() -> authorizationService.requireGroupAdmin(
+                group,
+                command("member-001", UserRole.USER)
+        )).doesNotThrowAnyException();
     }
 
     @Test
-    void usesAddingMemberSpecificError() {
+    void rejectsUnprivilegedActorWithTypedError() {
         Group group = Group.builder().ownerId("owner-001").build();
+        when(groupMemberRepository.findByGroupAndUserId(group, "member-001"))
+                .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> authorizationService.requireOwnerForAddingMember(
-                group, "another-user"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Only the group owner can add members to the group");
+        assertForbidden(() -> authorizationService.requireGroupAdmin(
+                group,
+                command("member-001", UserRole.USER)
+        ));
     }
 
     @Test
-    void rejectsMissingGroupWithDomainError() {
-        assertThatThrownBy(() -> authorizationService.requireOwnerForUpdate(
-                null, "owner-001"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Group is required for authorization");
+    void rejectsCommandWithoutAuthenticatedActor() {
+        assertForbidden(() -> authorizationService.requireActor(
+                UpdateGroupCommand.builder().build()
+        ));
+    }
+
+    private UpdateGroupCommand command(String actorId, UserRole role) {
+        return UpdateGroupCommand.builder()
+                .actorId(actorId)
+                .actorRoles(Set.of(role))
+                .build();
+    }
+
+    private void assertForbidden(Runnable invocation) {
+        assertThatThrownBy(invocation::run)
+                .isInstanceOfSatisfying(
+                        GroupCommandException.class,
+                        exception -> {
+                            assertThat(exception.getErrorCode())
+                                    .isEqualTo("AUTH_FORBIDDEN");
+                            assertThat(exception.getMessage())
+                                    .isEqualTo(
+                                            "You do not have permission to perform this operation"
+                                    );
+                        }
+                );
     }
 }

@@ -40,10 +40,9 @@ public class GroupService {
     public GroupCreatedEvent createGroup(CreateGroupCommand command) {
         requireCommand(command);
         requireText(command.getName(), "Group name is required");
-        requireText(command.getOwnerId(), "Owner ID is required");
         validateMaxMembers(command.getMaxMembers());
 
-        String ownerId = command.getOwnerId();
+        String ownerId = authorizationService.requireActor(command);
         if (groupRepository.existsByNameAndOwnerId(command.getName(), ownerId)) {
             throw new IllegalArgumentException(
                     "Group with name '" + command.getName() + "' already exists for this owner");
@@ -88,7 +87,7 @@ public class GroupService {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found: " + command.getGroupId()));
 
-        authorizationService.requireOwnerForUpdate(group, command.getRequestedBy());
+        authorizationService.requireGroupAdmin(group, command);
 
         if (command.getName() == null
                 && command.getDescription() == null
@@ -140,7 +139,7 @@ public class GroupService {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found: " + command.getGroupId()));
 
-        authorizationService.requireOwnerForDelete(group, command.getOwnerId());
+        authorizationService.requireOwner(group, command);
 
         groupRepository.delete(group);
         log.info("Group deleted: {}", groupId);
@@ -160,7 +159,7 @@ public class GroupService {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found: " + command.getGroupId()));
 
-        authorizationService.requireOwnerForAddingMember(group, command.getRequestedBy());
+        authorizationService.requireGroupAdmin(group, command);
 
         requireText(command.getUserId(), "User ID is required");
         requireText(command.getUserName(), "User name is required");

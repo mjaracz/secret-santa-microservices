@@ -8,7 +8,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UpdateGroupRequest {
-    private String requestedBy;
     private String name;
     private String description;
     private Integer maxMembers;
