@@ -7,12 +7,22 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.secretsanta.wishlist.dto.AssignmentResponse;
-import com.secretsanta.wishlist.dto.CreateWishlistItemRequest;
-import com.secretsanta.wishlist.dto.ReceiverWishlistResponse;
-import com.secretsanta.wishlist.dto.UpdateWishlistItemRequest;
-import com.secretsanta.wishlist.dto.WishlistItemResponse;
-import com.secretsanta.wishlist.dto.WishlistResponse;
+import com.secretsanta.common.wishlist.commands.AddWishlistItemCommand;
+import com.secretsanta.common.wishlist.commands.DeleteWishlistItemCommand;
+import com.secretsanta.common.wishlist.commands.GetMyAssignmentCommand;
+import com.secretsanta.common.wishlist.commands.GetReceiverWishlistCommand;
+import com.secretsanta.common.wishlist.commands.GetWishlistCommand;
+import com.secretsanta.common.wishlist.commands.SetGiftPurchasedCommand;
+import com.secretsanta.common.wishlist.commands.UpdateWishlistItemCommand;
+import com.secretsanta.common.wishlist.dto.AssignmentDto;
+import com.secretsanta.common.wishlist.dto.WishlistItemDto;
+import com.secretsanta.common.wishlist.events.GiftPurchaseUpdatedEvent;
+import com.secretsanta.common.wishlist.events.ReceiverWishlistFetchedEvent;
+import com.secretsanta.common.wishlist.events.WishlistAssignmentFetchedEvent;
+import com.secretsanta.common.wishlist.events.WishlistFetchedEvent;
+import com.secretsanta.common.wishlist.events.WishlistItemAddedEvent;
+import com.secretsanta.common.wishlist.events.WishlistItemDeletedEvent;
+import com.secretsanta.common.wishlist.events.WishlistItemUpdatedEvent;
 import com.secretsanta.wishlist.entity.DrawAssignmentProjection;
 import com.secretsanta.wishlist.entity.GroupProjection;
 import com.secretsanta.wishlist.entity.WishlistItem;
@@ -34,48 +44,49 @@ public class WishlistService {
     private final DrawAssignmentProjectionRepository assignmentRepository;
 
     @Transactional
-    public WishlistItemResponse addItem(
-            UUID groupId,
-            String actorUserId,
-            CreateWishlistItemRequest request
-    ) {
+    public WishlistItemAddedEvent addItem(AddWishlistItemCommand command) {
+        UUID groupId = groupIdOf(command.getGroupId());
+        String actorUserId = requireActor(command.getActorId());
         requireMembership(groupId, actorUserId);
-        requireTitle(request.title());
+        requireTitle(command.getTitle());
 
         WishlistItem item = WishlistItem.builder()
                 .groupId(groupId)
                 .ownerUserId(actorUserId)
-                .title(request.title().trim())
-                .description(normalizeOptional(request.description()))
-                .url(normalizeOptional(request.url()))
+                .title(command.getTitle().trim())
+                .description(normalizeOptional(command.getDescription()))
+                .url(normalizeOptional(command.getUrl()))
                 .build();
 
-        return toItemResponse(wishlistItemRepository.save(item));
+        WishlistItemAddedEvent event = WishlistItemAddedEvent.builder()
+                .item(toItemDto(wishlistItemRepository.save(item)))
+                .build();
+        event.initDefaults("WISHLIST_ITEM_ADDED");
+        return event;
     }
 
     @Transactional(readOnly = true)
-    public WishlistResponse getOwnWishlist(UUID groupId, String actorUserId) {
+    public WishlistFetchedEvent getOwnWishlist(GetWishlistCommand command) {
+        UUID groupId = groupIdOf(command.getGroupId());
+        String actorUserId = requireActor(command.getActorId());
         requireMembership(groupId, actorUserId);
-        return new WishlistResponse(
-                groupId.toString(),
-                actorUserId,
-                wishlistItemRepository
-                        .findByGroupIdAndOwnerUserIdOrderByCreatedAtAsc(groupId, actorUserId)
-                        .stream()
-                        .map(WishlistService::toItemResponse)
-                        .toList()
-        );
+
+        WishlistFetchedEvent event = WishlistFetchedEvent.builder()
+                .groupId(groupId.toString())
+                .ownerUserId(actorUserId)
+                .items(wishlistItems(groupId, actorUserId))
+                .build();
+        event.initDefaults("WISHLIST_FETCHED");
+        return event;
     }
 
     @Transactional
-    public WishlistItemResponse updateItem(
-            UUID groupId,
-            String actorUserId,
-            UUID itemId,
-            UpdateWishlistItemRequest request
-    ) {
+    public WishlistItemUpdatedEvent updateItem(UpdateWishlistItemCommand command) {
+        UUID groupId = groupIdOf(command.getGroupId());
+        UUID itemId = itemIdOf(command.getItemId());
+        String actorUserId = requireActor(command.getActorId());
         requireMembership(groupId, actorUserId);
-        requireTitle(request.title());
+        requireTitle(command.getTitle());
 
         WishlistItem item = wishlistItemRepository
                 .findByIdAndGroupIdAndOwnerUserId(itemId, groupId, actorUserId)
@@ -84,15 +95,22 @@ public class WishlistService {
                         "Wishlist item not found"
                 ));
 
-        item.setTitle(request.title().trim());
-        item.setDescription(normalizeOptional(request.description()));
-        item.setUrl(normalizeOptional(request.url()));
+        item.setTitle(command.getTitle().trim());
+        item.setDescription(normalizeOptional(command.getDescription()));
+        item.setUrl(normalizeOptional(command.getUrl()));
 
-        return toItemResponse(wishlistItemRepository.save(item));
+        WishlistItemUpdatedEvent event = WishlistItemUpdatedEvent.builder()
+                .item(toItemDto(wishlistItemRepository.save(item)))
+                .build();
+        event.initDefaults("WISHLIST_ITEM_UPDATED");
+        return event;
     }
 
     @Transactional
-    public void deleteItem(UUID groupId, String actorUserId, UUID itemId) {
+    public WishlistItemDeletedEvent deleteItem(DeleteWishlistItemCommand command) {
+        UUID groupId = groupIdOf(command.getGroupId());
+        UUID itemId = itemIdOf(command.getItemId());
+        String actorUserId = requireActor(command.getActorId());
         requireMembership(groupId, actorUserId);
 
         WishlistItem item = wishlistItemRepository
@@ -103,41 +121,62 @@ public class WishlistService {
                 ));
 
         wishlistItemRepository.delete(item);
+
+        WishlistItemDeletedEvent event = WishlistItemDeletedEvent.builder()
+                .groupId(groupId.toString())
+                .ownerUserId(actorUserId)
+                .itemId(itemId.toString())
+                .build();
+        event.initDefaults("WISHLIST_ITEM_DELETED");
+        return event;
     }
 
     @Transactional(readOnly = true)
-    public AssignmentResponse getMyAssignment(UUID groupId, String actorUserId) {
-        DrawAssignmentProjection assignment = requireAssignmentAfterDraw(groupId, actorUserId);
-        return toAssignmentResponse(assignment);
-    }
-
-    @Transactional(readOnly = true)
-    public ReceiverWishlistResponse getReceiverWishlist(UUID groupId, String actorUserId) {
-        DrawAssignmentProjection assignment = requireAssignmentAfterDraw(groupId, actorUserId);
-        List<WishlistItemResponse> items = wishlistItemRepository
-                .findByGroupIdAndOwnerUserIdOrderByCreatedAtAsc(groupId, assignment.getReceiverId())
-                .stream()
-                .map(WishlistService::toItemResponse)
-                .toList();
-
-        return new ReceiverWishlistResponse(
-                groupId.toString(),
-                assignment.getReceiverId(),
-                assignment.getReceiverName(),
-                items
+    public WishlistAssignmentFetchedEvent getMyAssignment(GetMyAssignmentCommand command) {
+        DrawAssignmentProjection assignment = requireAssignmentAfterDraw(
+                groupIdOf(command.getGroupId()),
+                requireActor(command.getActorId())
         );
+
+        WishlistAssignmentFetchedEvent event = WishlistAssignmentFetchedEvent.builder()
+                .assignment(toAssignmentDto(assignment))
+                .build();
+        event.initDefaults("WISHLIST_ASSIGNMENT_FETCHED");
+        return event;
+    }
+
+    @Transactional(readOnly = true)
+    public ReceiverWishlistFetchedEvent getReceiverWishlist(GetReceiverWishlistCommand command) {
+        DrawAssignmentProjection assignment = requireAssignmentAfterDraw(
+                groupIdOf(command.getGroupId()),
+                requireActor(command.getActorId())
+        );
+        UUID groupId = assignment.getGroupId();
+
+        ReceiverWishlistFetchedEvent event = ReceiverWishlistFetchedEvent.builder()
+                .groupId(groupId.toString())
+                .receiverId(assignment.getReceiverId())
+                .receiverName(assignment.getReceiverName())
+                .items(wishlistItems(groupId, assignment.getReceiverId()))
+                .build();
+        event.initDefaults("RECEIVER_WISHLIST_FETCHED");
+        return event;
     }
 
     @Transactional
-    public AssignmentResponse setGiftPurchased(
-            UUID groupId,
-            String actorUserId,
-            boolean giftPurchased
-    ) {
-        DrawAssignmentProjection assignment = requireAssignmentAfterDraw(groupId, actorUserId);
-        assignment.setGiftPurchased(giftPurchased);
-        assignment.setPurchasedAt(giftPurchased ? Instant.now() : null);
-        return toAssignmentResponse(assignmentRepository.save(assignment));
+    public GiftPurchaseUpdatedEvent setGiftPurchased(SetGiftPurchasedCommand command) {
+        DrawAssignmentProjection assignment = requireAssignmentAfterDraw(
+                groupIdOf(command.getGroupId()),
+                requireActor(command.getActorId())
+        );
+        assignment.setGiftPurchased(command.isGiftPurchased());
+        assignment.setPurchasedAt(command.isGiftPurchased() ? Instant.now() : null);
+
+        GiftPurchaseUpdatedEvent event = GiftPurchaseUpdatedEvent.builder()
+                .assignment(toAssignmentDto(assignmentRepository.save(assignment)))
+                .build();
+        event.initDefaults("GIFT_PURCHASE_UPDATED");
+        return event;
     }
 
     private DrawAssignmentProjection requireAssignmentAfterDraw(UUID groupId, String actorUserId) {
@@ -178,6 +217,40 @@ public class WishlistService {
         }
     }
 
+    private List<WishlistItemDto> wishlistItems(UUID groupId, String ownerUserId) {
+        return wishlistItemRepository
+                .findByGroupIdAndOwnerUserIdOrderByCreatedAtAsc(groupId, ownerUserId)
+                .stream()
+                .map(WishlistService::toItemDto)
+                .toList();
+    }
+
+    private static String requireActor(String actorUserId) {
+        if (actorUserId == null || actorUserId.isBlank()) {
+            throw WishlistException.unauthorized("Current user is required");
+        }
+        return actorUserId.trim();
+    }
+
+    private static UUID groupIdOf(String groupId) {
+        return uuidOf(groupId, "Group ID must be a valid UUID");
+    }
+
+    private static UUID itemIdOf(String itemId) {
+        return uuidOf(itemId, "Wishlist item ID must be a valid UUID");
+    }
+
+    private static UUID uuidOf(String value, String message) {
+        if (value == null || value.isBlank()) {
+            throw WishlistException.badRequest(message);
+        }
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException exception) {
+            throw WishlistException.badRequest(message);
+        }
+    }
+
     private static void requireTitle(String title) {
         if (title == null || title.isBlank()) {
             throw WishlistException.badRequest("Wishlist item title is required");
@@ -191,27 +264,31 @@ public class WishlistService {
         return value.trim();
     }
 
-    private static WishlistItemResponse toItemResponse(WishlistItem item) {
-        return new WishlistItemResponse(
-                item.getId(),
-                item.getGroupId().toString(),
-                item.getOwnerUserId(),
-                item.getTitle(),
-                item.getDescription(),
-                item.getUrl(),
-                item.getCreatedAt(),
-                item.getUpdatedAt()
-        );
+    private static WishlistItemDto toItemDto(WishlistItem item) {
+        return WishlistItemDto.builder()
+                .id(toStringOrNull(item.getId()))
+                .groupId(toStringOrNull(item.getGroupId()))
+                .ownerUserId(item.getOwnerUserId())
+                .title(item.getTitle())
+                .description(item.getDescription())
+                .url(item.getUrl())
+                .createdAt(toStringOrNull(item.getCreatedAt()))
+                .updatedAt(toStringOrNull(item.getUpdatedAt()))
+                .build();
     }
 
-    private static AssignmentResponse toAssignmentResponse(DrawAssignmentProjection assignment) {
-        return new AssignmentResponse(
-                assignment.getGroupId().toString(),
-                assignment.getGiverId(),
-                assignment.getReceiverId(),
-                assignment.getReceiverName(),
-                assignment.isGiftPurchased(),
-                assignment.getPurchasedAt()
-        );
+    private static AssignmentDto toAssignmentDto(DrawAssignmentProjection assignment) {
+        return AssignmentDto.builder()
+                .groupId(toStringOrNull(assignment.getGroupId()))
+                .giverId(assignment.getGiverId())
+                .receiverId(assignment.getReceiverId())
+                .receiverName(assignment.getReceiverName())
+                .giftPurchased(assignment.isGiftPurchased())
+                .purchasedAt(toStringOrNull(assignment.getPurchasedAt()))
+                .build();
+    }
+
+    private static String toStringOrNull(Object value) {
+        return value == null ? null : value.toString();
     }
 }

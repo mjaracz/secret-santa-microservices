@@ -19,11 +19,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
 
-import com.secretsanta.wishlist.dto.CreateWishlistItemRequest;
-import com.secretsanta.wishlist.dto.ReceiverWishlistResponse;
-import com.secretsanta.wishlist.dto.WishlistItemResponse;
+import com.secretsanta.common.wishlist.commands.AddWishlistItemCommand;
+import com.secretsanta.common.wishlist.commands.GetReceiverWishlistCommand;
+import com.secretsanta.common.wishlist.commands.SetGiftPurchasedCommand;
+import com.secretsanta.common.wishlist.dto.WishlistItemDto;
+import com.secretsanta.common.wishlist.events.ReceiverWishlistFetchedEvent;
 import com.secretsanta.wishlist.entity.DrawAssignmentProjection;
 import com.secretsanta.wishlist.entity.GroupProjection;
 import com.secretsanta.wishlist.entity.WishlistItem;
@@ -73,11 +74,7 @@ class WishlistServiceTest {
         when(participantRepository.existsByGroupIdAndUserId(GROUP_ID, GIVER_ID)).thenReturn(true);
         when(wishlistItemRepository.save(any(WishlistItem.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        wishlistService.addItem(
-                GROUP_ID,
-                GIVER_ID,
-                new CreateWishlistItemRequest("  Headphones  ", "Noise cancelling", " https://example.com ")
-        );
+        wishlistService.addItem(addItemCommand("  Headphones  ", "Noise cancelling", " https://example.com "));
 
         verify(wishlistItemRepository).save(wishlistItemCaptor.capture());
         WishlistItem savedItem = wishlistItemCaptor.getValue();
@@ -92,15 +89,9 @@ class WishlistServiceTest {
         givenGroup(false);
         when(participantRepository.existsByGroupIdAndUserId(GROUP_ID, GIVER_ID)).thenReturn(false);
 
-        assertThatThrownBy(() -> wishlistService.addItem(
-                GROUP_ID,
-                GIVER_ID,
-                new CreateWishlistItemRequest("Book", null, null)
-        ))
-                .isInstanceOfSatisfying(WishlistException.class, exception -> {
-                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
-                    assertThat(exception.getErrorCode()).isEqualTo("WISHLIST_FORBIDDEN");
-                });
+        assertThatThrownBy(() -> wishlistService.addItem(addItemCommand("Book", null, null)))
+                .isInstanceOfSatisfying(WishlistException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo("WISHLIST_FORBIDDEN"));
 
         verify(wishlistItemRepository, never()).save(any());
     }
@@ -110,11 +101,9 @@ class WishlistServiceTest {
         givenGroup(false);
         when(participantRepository.existsByGroupIdAndUserId(GROUP_ID, GIVER_ID)).thenReturn(true);
 
-        assertThatThrownBy(() -> wishlistService.getReceiverWishlist(GROUP_ID, GIVER_ID))
-                .isInstanceOfSatisfying(WishlistException.class, exception -> {
-                    assertThat(exception.getStatus()).isEqualTo(HttpStatus.CONFLICT);
-                    assertThat(exception.getErrorCode()).isEqualTo("WISHLIST_DRAW_NOT_COMPLETED");
-                });
+        assertThatThrownBy(() -> wishlistService.getReceiverWishlist(receiverWishlistCommand()))
+                .isInstanceOfSatisfying(WishlistException.class, exception ->
+                        assertThat(exception.getErrorCode()).isEqualTo("WISHLIST_DRAW_NOT_COMPLETED"));
 
         verify(assignmentRepository, never()).findByGroupIdAndGiverId(any(), any());
     }
@@ -128,11 +117,11 @@ class WishlistServiceTest {
         when(wishlistItemRepository.findByGroupIdAndOwnerUserIdOrderByCreatedAtAsc(GROUP_ID, RECEIVER_ID))
                 .thenReturn(List.of(wishlistItem(RECEIVER_ID, "Coffee grinder")));
 
-        ReceiverWishlistResponse response = wishlistService.getReceiverWishlist(GROUP_ID, GIVER_ID);
+        ReceiverWishlistFetchedEvent response = wishlistService.getReceiverWishlist(receiverWishlistCommand());
 
-        assertThat(response.receiverId()).isEqualTo(RECEIVER_ID);
-        assertThat(response.items())
-                .extracting(WishlistItemResponse::title)
+        assertThat(response.getReceiverId()).isEqualTo(RECEIVER_ID);
+        assertThat(response.getItems())
+                .extracting(WishlistItemDto::getTitle)
                 .containsExactly("Coffee grinder");
         verify(wishlistItemRepository)
                 .findByGroupIdAndOwnerUserIdOrderByCreatedAtAsc(GROUP_ID, RECEIVER_ID);
@@ -147,11 +136,42 @@ class WishlistServiceTest {
         when(assignmentRepository.save(any(DrawAssignmentProjection.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        var response = wishlistService.setGiftPurchased(GROUP_ID, GIVER_ID, true);
+        var response = wishlistService.setGiftPurchased(setGiftPurchasedCommand(true));
 
-        assertThat(response.giftPurchased()).isTrue();
-        assertThat(response.purchasedAt()).isNotNull();
+        assertThat(response.getAssignment().isGiftPurchased()).isTrue();
+        assertThat(response.getAssignment().getPurchasedAt()).isNotNull();
         verify(assignmentRepository).findByGroupIdAndGiverId(GROUP_ID, GIVER_ID);
+    }
+
+    private AddWishlistItemCommand addItemCommand(String title, String description, String url) {
+        AddWishlistItemCommand command = AddWishlistItemCommand.builder()
+                .groupId(GROUP_ID.toString())
+                .title(title)
+                .description(description)
+                .url(url)
+                .actorId(GIVER_ID)
+                .build();
+        command.initDefaults("ADD_WISHLIST_ITEM");
+        return command;
+    }
+
+    private GetReceiverWishlistCommand receiverWishlistCommand() {
+        GetReceiverWishlistCommand command = GetReceiverWishlistCommand.builder()
+                .groupId(GROUP_ID.toString())
+                .actorId(GIVER_ID)
+                .build();
+        command.initDefaults("GET_RECEIVER_WISHLIST");
+        return command;
+    }
+
+    private SetGiftPurchasedCommand setGiftPurchasedCommand(boolean giftPurchased) {
+        SetGiftPurchasedCommand command = SetGiftPurchasedCommand.builder()
+                .groupId(GROUP_ID.toString())
+                .actorId(GIVER_ID)
+                .giftPurchased(giftPurchased)
+                .build();
+        command.initDefaults("SET_GIFT_PURCHASED");
+        return command;
     }
 
     private void givenGroup(boolean drawn) {

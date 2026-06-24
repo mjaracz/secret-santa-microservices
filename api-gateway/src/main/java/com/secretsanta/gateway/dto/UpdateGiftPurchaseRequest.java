@@ -1,4 +1,4 @@
-package com.secretsanta.wishlist.dto;
+package com.secretsanta.gateway.dto;
 
 import jakarta.validation.constraints.NotNull;
 

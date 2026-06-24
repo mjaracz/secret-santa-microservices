@@ -17,6 +17,13 @@ final class ResponseMapper {
     private static final String REFRESH_REUSED_ERROR_CODE = "AUTH_REFRESH_TOKEN_REUSED";
     private static final String FORBIDDEN_ERROR_CODE = "AUTH_FORBIDDEN";
     private static final String INVALID_VERIFICATION_ERROR_CODE = "USER_VERIFICATION_TOKEN_INVALID";
+    private static final String WISHLIST_VALIDATION_FAILED = "WISHLIST_VALIDATION_FAILED";
+    private static final String WISHLIST_UNAUTHORIZED = "WISHLIST_UNAUTHORIZED";
+    private static final String WISHLIST_FORBIDDEN = "WISHLIST_FORBIDDEN";
+    private static final String WISHLIST_GROUP_NOT_FOUND = "WISHLIST_GROUP_NOT_FOUND";
+    private static final String WISHLIST_ITEM_NOT_FOUND = "WISHLIST_ITEM_NOT_FOUND";
+    private static final String WISHLIST_ASSIGNMENT_NOT_FOUND = "WISHLIST_ASSIGNMENT_NOT_FOUND";
+    private static final String WISHLIST_DRAW_NOT_COMPLETED = "WISHLIST_DRAW_NOT_COMPLETED";
 
     private ResponseMapper() {
     }
@@ -43,16 +50,23 @@ final class ResponseMapper {
         }
 
         return switch (errorCode) {
-            case VALIDATION_ERROR_CODE -> HttpStatus.BAD_REQUEST;
-            case EMAIL_EXISTS_ERROR_CODE -> HttpStatus.CONFLICT;
+            case VALIDATION_ERROR_CODE,
+                 WISHLIST_VALIDATION_FAILED -> HttpStatus.BAD_REQUEST;
+            case EMAIL_EXISTS_ERROR_CODE,
+                 WISHLIST_DRAW_NOT_COMPLETED -> HttpStatus.CONFLICT;
             case INTERNAL_ERROR_CODE -> HttpStatus.INTERNAL_SERVER_ERROR;
             case REQUEST_TIMEOUT_ERROR_CODE -> HttpStatus.GATEWAY_TIMEOUT;
             case INVALID_CREDENTIALS_ERROR_CODE,
                  INVALID_REFRESH_ERROR_CODE,
-                 REFRESH_REUSED_ERROR_CODE -> HttpStatus.UNAUTHORIZED;
+                 REFRESH_REUSED_ERROR_CODE,
+                 WISHLIST_UNAUTHORIZED -> HttpStatus.UNAUTHORIZED;
             case EMAIL_NOT_VERIFIED_ERROR_CODE,
-                 FORBIDDEN_ERROR_CODE -> HttpStatus.FORBIDDEN;
+                 FORBIDDEN_ERROR_CODE,
+                 WISHLIST_FORBIDDEN -> HttpStatus.FORBIDDEN;
             case INVALID_VERIFICATION_ERROR_CODE -> HttpStatus.BAD_REQUEST;
+            case WISHLIST_GROUP_NOT_FOUND,
+                 WISHLIST_ITEM_NOT_FOUND,
+                 WISHLIST_ASSIGNMENT_NOT_FOUND -> HttpStatus.NOT_FOUND;
             default -> HttpStatus.UNPROCESSABLE_ENTITY;
         };
     }
