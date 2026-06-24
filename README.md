@@ -210,6 +210,67 @@ Content-Type: application/json
 ```HTTP
 DELETE /api/groups/{groupId}?ownerId={ownerId} HTTP/1.1
 ```
+
+### Add Wishlist Item
+```HTTP
+POST /api/groups/{groupId}/wishlist HTTP/1.1
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+
+{
+    "title": "Noise-cancelling headphones",
+    "description": "Optional gift details",
+    "url": "https://example.com/gift"
+}
+```
+
+### Get Own Wishlist
+```HTTP
+GET /api/groups/{groupId}/wishlist HTTP/1.1
+Authorization: Bearer {accessToken}
+```
+
+### Update Wishlist Item
+```HTTP
+PUT /api/groups/{groupId}/wishlist/{itemId} HTTP/1.1
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+
+{
+    "title": "Updated gift title",
+    "description": "Updated optional gift details",
+    "url": "https://example.com/updated-gift"
+}
+```
+
+### Delete Wishlist Item
+```HTTP
+DELETE /api/groups/{groupId}/wishlist/{itemId} HTTP/1.1
+Authorization: Bearer {accessToken}
+```
+
+### Get My Assignment (available after draw)
+```HTTP
+GET /api/groups/{groupId}/assignments/me HTTP/1.1
+Authorization: Bearer {accessToken}
+```
+
+### Mark Gift As Purchased
+```HTTP
+PATCH /api/groups/{groupId}/assignments/me/purchased HTTP/1.1
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+
+{
+    "giftPurchased": true
+}
+```
+
+### Get Receiver Wishlist (available after draw)
+```HTTP
+GET /api/groups/{groupId}/receiver-wishlist HTTP/1.1
+Authorization: Bearer {accessToken}
+```
 </br>
 
 
