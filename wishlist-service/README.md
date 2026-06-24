@@ -1,4 +1,4 @@
-# Wishlist Service (Pure Worker)
+# Wishlist Service
 
 > **Part of Secret Santa Microservices Platform**
 > 
@@ -8,39 +8,50 @@
 
 ## 🏗️ Architectural Role
 
-**Type:** `Pure Event-Driven Worker`
+**Type:** `REST-backed Domain Service + Event Projection Worker`
 
 **Responsibility:**  
 Domain service managing gift wishlists for users within Secret Santa groups. Each user maintains separate wishlists per group they participate in. Wishlists become visible to assigned Secret Santa only after draw completion.
 
 **Key Characteristics:**
-- ✅ **Pure worker** - Kafka-only communication (no REST endpoints)
-- ✅ **Domain logic** - Wishlist CRUD operations, visibility control
+- ✅ **REST API** - exposes the user-facing wishlist and assignment flow
+- ✅ **Domain logic** - Wishlist CRUD operations, visibility control, purchase flag
 - ✅ **Database per service** - Isolated PostgreSQL instance
 - ✅ **Multi-tenancy** - One wishlist per user per group
-- ✅ **Event-driven** - Consumes commands, publishes domain events
-- ❌ **No REST endpoints** - Pure asynchronous processing
-- ❌ **No HTTP exposure** - Internal service only
+- ✅ **Event-driven projection** - consumes group events for membership, draw status and assignments
+- ❌ **No full assignment list API** - users can query only their own receiver
 
 **Architecture Pattern:**  
 Event-Driven Microservices + Database per Service + Per-Group Multi-tenancy
 
 **Communication Flow:**
 ```
-AddWishlistItemCommand (from API Gateway)
+REST request with current user context
     ↓
-Kafka (wishlist.commands topic)
+Wishlist Service Controller
     ↓
-Wishlist Service @KafkaListener
-    ↓
-Business Logic (validate user in group, create item)
+Business Logic (validate group membership and draw visibility)
     ↓
 PostgreSQL (persist wishlist item)
     ↓
-Kafka (wishlist.events topic)
-    ↓
-WishlistItemAddedEvent → Notification Service
+REST response
 ```
+
+Group membership and draw assignments are projected from `group.events`.
+
+### Implemented REST API
+
+All endpoints expect the current user id in `X-User-Id`:
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/groups/{groupId}/wishlist` | Add an item to the current user's wishlist |
+| `GET` | `/api/groups/{groupId}/wishlist` | Get the current user's wishlist |
+| `PUT` | `/api/groups/{groupId}/wishlist/{itemId}` | Update the current user's item |
+| `DELETE` | `/api/groups/{groupId}/wishlist/{itemId}` | Delete the current user's item |
+| `GET` | `/api/groups/{groupId}/assignments/me` | Get only the current user's receiver after draw |
+| `PATCH` | `/api/groups/{groupId}/assignments/me/purchased` | Mark the current user's assigned gift as purchased/not purchased |
+| `GET` | `/api/groups/{groupId}/receiver-wishlist` | Get only the assigned receiver's wishlist after draw |
 
 ---
 
@@ -64,6 +75,8 @@ When generating from [start.spring.io](https://start.spring.io):
 | Category | Dependency Name | Identifier | Purpose |
 |----------|----------------|------------|---------|
 | **Messaging** | Spring for Apache Kafka | `kafka` | Event consumer/producer for domain events |
+| **Web** | Spring Web | `web` | REST endpoints for wishlist user journey |
+| **Validation** | Spring Validation | `validation` | Request validation for REST DTOs |
 | **SQL** | Spring Data JPA | `data-jpa` | ORM layer for PostgreSQL database |
 | **SQL** | PostgreSQL Driver | `postgresql` | JDBC driver for PostgreSQL connectivity |
 | **Developer Tools** | Lombok | `lombok` | Reduce boilerplate code (@Data, @Builder, etc.) |
@@ -101,10 +114,10 @@ When generating from [start.spring.io](https://start.spring.io):
 ```
 
 **Critical Notes:**
-- ❌ **DO NOT add `spring-boot-starter-web`** - This is a pure worker (no REST endpoints)
-- ❌ **DO NOT add Spring Boot Actuator** - Optional, add only if monitoring needed
-- ❌ **DO NOT add Validation** - Optional, add if using @Valid on entities
-- ✅ **Minimal dependencies** - Only essentials for domain logic
+- ✅ `spring-boot-starter-web` is required for the implemented REST endpoints
+- ✅ Validation is used on request DTOs
+- ❌ Spring Boot Actuator is optional and not required for the current flow
+- ✅ Keep dependencies minimal around the closed user journey
 
 ---
 
@@ -275,7 +288,7 @@ public class WishlistEventListener {
 ## 💾 Database Schema (PostgreSQL)
 
 **Database Name:** `wishlist_db`  
-**Docker Port:** `5434` (mapped to internal 5432)
+**Docker Port:** `5435` (mapped to internal 5432)
 
 ### Tables
 
