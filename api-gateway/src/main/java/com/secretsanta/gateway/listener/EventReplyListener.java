@@ -12,7 +12,11 @@ public class EventReplyListener {
     private final KafkaServiceBus serviceBus;
 
     @KafkaListener(
-            topics = {"${kafka.topics.user-events}", "${kafka.topics.group-events}"},
+            topics = {
+                    "${kafka.topics.user-events}",
+                    "${kafka.topics.group-events}",
+                    "${kafka.topics.wishlist-events}"
+            },
             groupId = "${spring.kafka.consumer.group-id}")
     public void listen(String message) {
         serviceBus.handleEventMessage(message);

@@ -15,6 +15,13 @@ import com.secretsanta.common.user.events.EmailVerifiedEvent;
 import com.secretsanta.common.user.events.SessionRefreshedEvent;
 import com.secretsanta.common.user.events.SessionRevokedEvent;
 import com.secretsanta.common.user.events.UserAuthenticatedEvent;
+import com.secretsanta.common.wishlist.events.GiftPurchaseUpdatedEvent;
+import com.secretsanta.common.wishlist.events.ReceiverWishlistFetchedEvent;
+import com.secretsanta.common.wishlist.events.WishlistAssignmentFetchedEvent;
+import com.secretsanta.common.wishlist.events.WishlistFetchedEvent;
+import com.secretsanta.common.wishlist.events.WishlistItemAddedEvent;
+import com.secretsanta.common.wishlist.events.WishlistItemDeletedEvent;
+import com.secretsanta.common.wishlist.events.WishlistItemUpdatedEvent;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -46,7 +53,14 @@ import java.util.UUID;
 		@JsonSubTypes.Type(value = GroupDeletedEvent.class, name = "GROUP_DELETED"),
 		@JsonSubTypes.Type(value = MemberAddedEvent.class, name = "MEMBER_ADDED"),
 		@JsonSubTypes.Type(value = DrawCompletedEvent.class, name = "DRAW_COMPLETED"),
-		@JsonSubTypes.Type(value = CommandFailedEvent.class, name = "COMMAND_FAILED")
+		@JsonSubTypes.Type(value = CommandFailedEvent.class, name = "COMMAND_FAILED"),
+		@JsonSubTypes.Type(value = WishlistItemAddedEvent.class, name = "WISHLIST_ITEM_ADDED"),
+		@JsonSubTypes.Type(value = WishlistFetchedEvent.class, name = "WISHLIST_FETCHED"),
+		@JsonSubTypes.Type(value = WishlistItemUpdatedEvent.class, name = "WISHLIST_ITEM_UPDATED"),
+		@JsonSubTypes.Type(value = WishlistItemDeletedEvent.class, name = "WISHLIST_ITEM_DELETED"),
+		@JsonSubTypes.Type(value = WishlistAssignmentFetchedEvent.class, name = "WISHLIST_ASSIGNMENT_FETCHED"),
+		@JsonSubTypes.Type(value = GiftPurchaseUpdatedEvent.class, name = "GIFT_PURCHASE_UPDATED"),
+		@JsonSubTypes.Type(value = ReceiverWishlistFetchedEvent.class, name = "RECEIVER_WISHLIST_FETCHED")
 })
 public class BaseEvent {
 

@@ -23,6 +23,12 @@ class ResponseMapperTest {
             "AUTH_EMAIL_NOT_VERIFIED, 403",
             "AUTH_FORBIDDEN, 403",
             "USER_VERIFICATION_TOKEN_INVALID, 400",
+            "WISHLIST_VALIDATION_FAILED, 400",
+            "WISHLIST_FORBIDDEN, 403",
+            "WISHLIST_GROUP_NOT_FOUND, 404",
+            "WISHLIST_ITEM_NOT_FOUND, 404",
+            "WISHLIST_ASSIGNMENT_NOT_FOUND, 404",
+            "WISHLIST_DRAW_NOT_COMPLETED, 409",
             "UNKNOWN_BUSINESS_ERROR, 422"
     })
     void mapsErrorCodeToExpectedHttpStatus(

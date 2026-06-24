@@ -17,6 +17,13 @@ import com.secretsanta.common.user.commands.RevokeSessionCommand;
 import com.secretsanta.common.user.commands.UpdateUserCommand;
 import com.secretsanta.common.user.commands.VerifyEmailCommand;
 import com.secretsanta.common.user.UserRole;
+import com.secretsanta.common.wishlist.commands.AddWishlistItemCommand;
+import com.secretsanta.common.wishlist.commands.DeleteWishlistItemCommand;
+import com.secretsanta.common.wishlist.commands.GetMyAssignmentCommand;
+import com.secretsanta.common.wishlist.commands.GetReceiverWishlistCommand;
+import com.secretsanta.common.wishlist.commands.GetWishlistCommand;
+import com.secretsanta.common.wishlist.commands.SetGiftPurchasedCommand;
+import com.secretsanta.common.wishlist.commands.UpdateWishlistItemCommand;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -49,7 +56,14 @@ import java.util.UUID;
 		@JsonSubTypes.Type(value = UpdateGroupCommand.class, name = "UPDATE_GROUP"),
 		@JsonSubTypes.Type(value = DeleteGroupCommand.class, name = "DELETE_GROUP"),
 		@JsonSubTypes.Type(value = AddMemberCommand.class, name = "ADD_MEMBER"),
-		@JsonSubTypes.Type(value = DrawNamesCommand.class, name = "DRAW_NAMES")
+		@JsonSubTypes.Type(value = DrawNamesCommand.class, name = "DRAW_NAMES"),
+		@JsonSubTypes.Type(value = AddWishlistItemCommand.class, name = "ADD_WISHLIST_ITEM"),
+		@JsonSubTypes.Type(value = GetWishlistCommand.class, name = "GET_WISHLIST"),
+		@JsonSubTypes.Type(value = UpdateWishlistItemCommand.class, name = "UPDATE_WISHLIST_ITEM"),
+		@JsonSubTypes.Type(value = DeleteWishlistItemCommand.class, name = "DELETE_WISHLIST_ITEM"),
+		@JsonSubTypes.Type(value = GetMyAssignmentCommand.class, name = "GET_MY_ASSIGNMENT"),
+		@JsonSubTypes.Type(value = SetGiftPurchasedCommand.class, name = "SET_GIFT_PURCHASED"),
+		@JsonSubTypes.Type(value = GetReceiverWishlistCommand.class, name = "GET_RECEIVER_WISHLIST")
 })
 public abstract class BaseCommand {
 
