@@ -4,6 +4,7 @@ import com.secretsanta.common.group.commands.AddMemberCommand;
 import com.secretsanta.common.group.commands.CreateGroupCommand;
 import com.secretsanta.common.group.commands.DeleteGroupCommand;
 import com.secretsanta.common.group.commands.DrawNamesCommand;
+import com.secretsanta.common.group.commands.GetMyGroupsCommand;
 import com.secretsanta.common.group.commands.UpdateGroupCommand;
 import com.secretsanta.gateway.dto.AddMemberRequest;
 import com.secretsanta.gateway.dto.CommandResponse;
@@ -79,5 +80,14 @@ public class GroupGatewayService {
         command.initDefaults("DRAW_NAMES");
 
         return dispatcher.send(groupCommandsTopic, command, "DRAW_NAMES");
+    }
+
+    public Mono<CommandResponse> getMyGroups(String requesterId) {
+        GetMyGroupsCommand command = GetMyGroupsCommand.builder()
+                .requestedBy(requesterId)
+                .build();
+        command.initDefaults("GET_MY_GROUPS");
+
+        return dispatcher.send(groupCommandsTopic, command, "GET_MY_GROUPS");
     }
 }

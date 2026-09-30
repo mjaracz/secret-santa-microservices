@@ -1,24 +1,17 @@
 package com.secretsanta.group.listener;
 
+import com.secretsanta.common.group.commands.*;
+import com.secretsanta.common.group.events.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 import com.secretsanta.common.BaseCommand;
 import com.secretsanta.common.CommandFailedEvent;
-import com.secretsanta.common.group.commands.AddMemberCommand;
-import com.secretsanta.common.group.commands.CreateGroupCommand;
-import com.secretsanta.common.group.commands.DeleteGroupCommand;
-import com.secretsanta.common.group.commands.DrawNamesCommand;
-import com.secretsanta.common.group.commands.UpdateGroupCommand;
-import com.secretsanta.common.group.events.DrawCompletedEvent;
-import com.secretsanta.common.group.events.GroupCreatedEvent;
-import com.secretsanta.common.group.events.GroupDeletedEvent;
-import com.secretsanta.common.group.events.GroupUpdatedEvent;
-import com.secretsanta.common.group.events.MemberAddedEvent;
 import com.secretsanta.infrastructure.kafka.KafkaServiceBus;
 import com.secretsanta.group.service.DrawService;
 import com.secretsanta.group.service.GroupService;
+import com.secretsanta.group.service.GroupQueryService;
 
 @Component
 public class GroupCommandListener {
@@ -26,14 +19,23 @@ public class GroupCommandListener {
     private final KafkaServiceBus serviceBus;
     private final GroupService groupService;
     private final DrawService drawService;
+    private final GroupQueryService groupQueryService;
 
     @Value("${kafka.topics.group-events}")
     private String groupEventsTopic;
 
-    public GroupCommandListener(KafkaServiceBus serviceBus, GroupService groupService, DrawService drawService) {
+    public GroupCommandListener(
+      KafkaServiceBus serviceBus,
+      GroupService groupService,
+      DrawService drawService,
+      GroupQueryService groupQueryService
+    ) {
         this.serviceBus = serviceBus;
         this.groupService = groupService;
         this.drawService = drawService;
+        this.groupQueryService = groupQueryService;
+
+        serviceBus.registerCommandHandler(GetMyGroupsCommand.class, this::onGetMyGroups);
         serviceBus.registerCommandHandler(CreateGroupCommand.class, this::onCreateGroup);
         serviceBus.registerCommandHandler(UpdateGroupCommand.class, this::onUpdateGroup);
         serviceBus.registerCommandHandler(DeleteGroupCommand.class, this::onDeleteGroup);
@@ -86,5 +88,16 @@ public class GroupCommandListener {
                 .build();
         failedEvent.initDefaults("COMMAND_FAILED");
         serviceBus.emitEvent(groupEventsTopic, command.getCommandId(), failedEvent);
+    }
+
+    private void onGetMyGroups(GetMyGroupsCommand command) {
+        MyGroupsFetchedEvent event = groupQueryService.getMyGroups(command);
+        event.setCorrelationId(command.getCommandId());
+
+        serviceBus.emitEvent(
+          groupEventsTopic,
+          event.getCorrelationId(),
+          event
+        );
     }
 }

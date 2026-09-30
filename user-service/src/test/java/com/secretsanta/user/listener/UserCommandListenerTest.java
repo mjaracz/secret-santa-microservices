@@ -1,9 +1,12 @@
 package com.secretsanta.user.listener;
 
+import com.secretsanta.common.BaseCommand;
 import com.secretsanta.common.BaseEvent;
 import com.secretsanta.common.CommandFailedEvent;
 import com.secretsanta.common.user.UserAccountStatus;
+import com.secretsanta.common.user.commands.AuthenticateUserCommand;
 import com.secretsanta.common.user.commands.CreateUserCommand;
+import com.secretsanta.common.user.events.UserAuthenticatedEvent;
 import com.secretsanta.common.user.events.UserCreatedEvent;
 import com.secretsanta.infrastructure.kafka.KafkaServiceBus;
 import com.secretsanta.user.exception.UserCommandException;
@@ -136,6 +139,60 @@ class UserCommandListenerTest {
     }
 
     @Test
+    void emitsAuthenticatedEventWithCorrelationId() throws Exception {
+        AuthenticateUserCommand command = AuthenticateUserCommand.builder()
+                .email("user@example.com")
+                .encryptedPassword("ciphertext")
+                .build();
+        command.initDefaults("AUTHENTICATE_USER");
+
+        UserAuthenticatedEvent serviceEvent = UserAuthenticatedEvent.builder()
+                .userId("user-123")
+                .build();
+        serviceEvent.initDefaults("USER_AUTHENTICATED");
+        when(userService.authenticate(any(AuthenticateUserCommand.class)))
+                .thenReturn(serviceEvent);
+
+        listener.listen(objectMapper.writeValueAsString(command));
+
+        verify(userService).authenticate(any(AuthenticateUserCommand.class));
+        verifyNoInteractions(commandValidator);
+        verify(kafkaTemplate).send(
+                eq("user.events"),
+                eq("user-123"),
+                jsonCaptor.capture()
+        );
+
+        BaseEvent publishedEvent = objectMapper.readValue(
+                jsonCaptor.getValue(),
+                BaseEvent.class
+        );
+        assertThat(publishedEvent).isInstanceOf(UserAuthenticatedEvent.class);
+        assertThat(publishedEvent.getCorrelationId()).isEqualTo(command.getCommandId());
+    }
+
+    @Test
+    void emitsGenericFailureForInvalidAuthentication() throws Exception {
+        AuthenticateUserCommand command = AuthenticateUserCommand.builder()
+                .email("user@example.com")
+                .encryptedPassword("ciphertext")
+                .build();
+        command.initDefaults("AUTHENTICATE_USER");
+        when(userService.authenticate(any(AuthenticateUserCommand.class)))
+                .thenThrow(new UserCommandException(
+                        "AUTH_INVALID_CREDENTIALS",
+                        "Invalid email or password"
+                ));
+
+        listener.listen(objectMapper.writeValueAsString(command));
+
+        CommandFailedEvent failedEvent = captureFailureEvent(command);
+        assertThat(failedEvent.getErrorCode()).isEqualTo("AUTH_INVALID_CREDENTIALS");
+        assertThat(failedEvent.getReason()).isEqualTo("Invalid email or password");
+        assertThat(failedEvent.getOriginalCommandType()).isEqualTo("AUTHENTICATE_USER");
+    }
+
+    @Test
     void invalidCommandDoesNotInvokeUserService() throws Exception {
         CreateUserCommand command = validCommand();
 
@@ -204,7 +261,7 @@ class UserCommandListenerTest {
     }
 
     private CommandFailedEvent captureFailureEvent(
-            CreateUserCommand command
+            BaseCommand command
     ) throws Exception {
         verify(kafkaTemplate).send(
                 eq("user.events"),

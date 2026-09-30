@@ -2,7 +2,9 @@ package com.secretsanta.user.listener;
 
 import com.secretsanta.common.BaseCommand;
 import com.secretsanta.common.CommandFailedEvent;
+import com.secretsanta.common.user.commands.AuthenticateUserCommand;
 import com.secretsanta.common.user.commands.CreateUserCommand;
+import com.secretsanta.common.user.events.UserAuthenticatedEvent;
 import com.secretsanta.common.user.events.UserCreatedEvent;
 import com.secretsanta.infrastructure.kafka.KafkaServiceBus;
 import com.secretsanta.user.exception.UserCommandException;
@@ -38,6 +40,10 @@ public class UserCommandListener {
                 CreateUserCommand.class,
                 this::onCreateUser
         );
+        serviceBus.registerCommandHandler(
+                AuthenticateUserCommand.class,
+                this::onAuthenticateUser
+        );
     }
 
     @KafkaListener(
@@ -53,6 +59,25 @@ public class UserCommandListener {
             commandValidator.validate(command);
 
             UserCreatedEvent event = userService.createUser(command);
+            event.setCorrelationId(command.getCommandId());
+
+            serviceBus.emitEvent(
+                    userEventsTopic,
+                    event.getUserId(),
+                    event
+            );
+        } catch (UserCommandException exception) {
+            emitFailure(
+                    command,
+                    exception.getErrorCode(),
+                    exception.getMessage()
+            );
+        }
+    }
+
+    private void onAuthenticateUser(AuthenticateUserCommand command) {
+        try {
+            UserAuthenticatedEvent event = userService.authenticate(command);
             event.setCorrelationId(command.getCommandId());
 
             serviceBus.emitEvent(

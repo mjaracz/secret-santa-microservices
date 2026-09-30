@@ -3,6 +3,7 @@ package com.secretsanta.group.repository;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -14,4 +15,7 @@ public interface GroupRepository extends JpaRepository<Group, UUID> {
     List<Group> findByOwnerId(String ownerId);
 
     boolean existsByNameAndOwnerId(String name, String ownerId);
+
+    @EntityGraph(attributePaths = "members")
+    List<Group> findDistinctByMembers_UserIdOrderByCreatedAtDesc(String userId);
 }

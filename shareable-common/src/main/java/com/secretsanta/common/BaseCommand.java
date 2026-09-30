@@ -9,8 +9,11 @@ import com.secretsanta.common.group.commands.DeleteGroupCommand;
 import com.secretsanta.common.group.commands.DrawNamesCommand;
 import com.secretsanta.common.group.commands.UpdateGroupCommand;
 import com.secretsanta.common.user.commands.CreateUserCommand;
+import com.secretsanta.common.user.commands.AuthenticateUserCommand;
 import com.secretsanta.common.user.commands.DeleteUserCommand;
 import com.secretsanta.common.user.commands.UpdateUserCommand;
+import com.secretsanta.common.group.commands.GetMyGroupsCommand;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -31,13 +34,15 @@ import java.util.UUID;
 )
 @JsonSubTypes({
 		@JsonSubTypes.Type(value = CreateUserCommand.class, name = "CREATE_USER"),
+		@JsonSubTypes.Type(value = AuthenticateUserCommand.class, name = "AUTHENTICATE_USER"),
 		@JsonSubTypes.Type(value = UpdateUserCommand.class, name = "UPDATE_USER"),
 		@JsonSubTypes.Type(value = DeleteUserCommand.class, name = "DELETE_USER"),
 		@JsonSubTypes.Type(value = CreateGroupCommand.class, name = "CREATE_GROUP"),
 		@JsonSubTypes.Type(value = UpdateGroupCommand.class, name = "UPDATE_GROUP"),
 		@JsonSubTypes.Type(value = DeleteGroupCommand.class, name = "DELETE_GROUP"),
 		@JsonSubTypes.Type(value = AddMemberCommand.class, name = "ADD_MEMBER"),
-		@JsonSubTypes.Type(value = DrawNamesCommand.class, name = "DRAW_NAMES")
+		@JsonSubTypes.Type(value = DrawNamesCommand.class, name = "DRAW_NAMES"),
+		@JsonSubTypes.Type(value = GetMyGroupsCommand.class, name = "GET_MY_GROUPS"),
 })
 public abstract class BaseCommand {
 

@@ -1,11 +1,14 @@
 package com.secretsanta.user.service;
 
 import com.secretsanta.common.user.UserAccountStatus;
+import com.secretsanta.common.user.commands.AuthenticateUserCommand;
 import com.secretsanta.common.user.commands.CreateUserCommand;
+import com.secretsanta.common.user.events.UserAuthenticatedEvent;
 import com.secretsanta.common.user.events.UserCreatedEvent;
 import com.secretsanta.user.entity.User;
 import com.secretsanta.user.exception.UserCommandException;
 import com.secretsanta.user.repository.UserRepository;
+import com.secretsanta.user.security.PasswordDecryptor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,6 +22,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.UUID;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -48,6 +52,9 @@ class UserServiceTest {
 	@Mock
 	private UserRepository userRepository;
 
+	@Mock
+	private PasswordDecryptor passwordDecryptor;
+
 	@Captor
 	private ArgumentCaptor<User> userCaptor;
 
@@ -60,7 +67,8 @@ class UserServiceTest {
 
 		userService = new UserService(
 			userRepository,
-			passwordEncoder
+			passwordEncoder,
+			passwordDecryptor
 		);
 	}
 
@@ -129,6 +137,75 @@ class UserServiceTest {
 
 		assertThat(event.toString())
 			.doesNotContain(PASSWORD);
+	}
+
+	@Test
+	void authenticatesUserAndReturnsOnlyItsIdentity() {
+		AuthenticateUserCommand command = validAuthenticateCommand();
+		User user = userWithPassword(PASSWORD, UserAccountStatus.PENDING_VERIFICATION);
+
+		when(passwordDecryptor.decrypt("encrypted-password"))
+			.thenReturn(PASSWORD);
+		when(userRepository.findByEmailNormalized(NORMALIZED_EMAIL))
+			.thenReturn(Optional.of(user));
+
+		UserAuthenticatedEvent event = userService.authenticate(command);
+
+		assertThat(event.getUserId()).isEqualTo(USER_ID.toString());
+		assertThat(event.getEventType()).isEqualTo("USER_AUTHENTICATED");
+		assertThat(event.getCorrelationId()).isNull();
+		verify(passwordDecryptor).decrypt("encrypted-password");
+	}
+
+	@Test
+	void rejectsIncorrectPasswordWithGenericAuthenticationError() {
+		AuthenticateUserCommand command = validAuthenticateCommand();
+		User user = userWithPassword("some-other-password", UserAccountStatus.ACTIVE);
+
+		when(passwordDecryptor.decrypt("encrypted-password"))
+			.thenReturn(PASSWORD);
+		when(userRepository.findByEmailNormalized(NORMALIZED_EMAIL))
+			.thenReturn(Optional.of(user));
+
+		assertInvalidCredentials(() -> userService.authenticate(command));
+	}
+
+	@Test
+	void rejectsUnknownEmailWithGenericAuthenticationError() {
+		when(passwordDecryptor.decrypt("encrypted-password"))
+			.thenReturn(PASSWORD);
+		when(userRepository.findByEmailNormalized(NORMALIZED_EMAIL))
+			.thenReturn(Optional.empty());
+
+		assertInvalidCredentials(() ->
+			userService.authenticate(validAuthenticateCommand())
+		);
+	}
+
+	@Test
+	void rejectsDeletedAccountEvenWhenPasswordMatches() {
+		AuthenticateUserCommand command = validAuthenticateCommand();
+		User user = userWithPassword(PASSWORD, UserAccountStatus.DELETED);
+
+		when(passwordDecryptor.decrypt("encrypted-password"))
+			.thenReturn(PASSWORD);
+		when(userRepository.findByEmailNormalized(NORMALIZED_EMAIL))
+			.thenReturn(Optional.of(user));
+
+		assertInvalidCredentials(() -> userService.authenticate(command));
+	}
+
+	@Test
+	void rejectsUndecryptablePasswordBeforeLookingUpUser() {
+		when(passwordDecryptor.decrypt("encrypted-password"))
+			.thenThrow(new IllegalArgumentException("invalid ciphertext"));
+
+		assertInvalidCredentials(() ->
+			userService.authenticate(validAuthenticateCommand())
+		);
+
+		verify(userRepository, never())
+			.findByEmailNormalized(any());
 	}
 
 	@Test
@@ -231,6 +308,40 @@ class UserServiceTest {
 			.name("New User")
 			.password(PASSWORD)
 			.build();
+	}
+
+	private AuthenticateUserCommand validAuthenticateCommand() {
+		return AuthenticateUserCommand.builder()
+			.email("  " + EMAIL + "  ")
+			.encryptedPassword("encrypted-password")
+			.build();
+	}
+
+	private User userWithPassword(
+		String password,
+		UserAccountStatus status
+	) {
+		return User.builder()
+			.id(USER_ID)
+			.email(EMAIL)
+			.emailNormalized(NORMALIZED_EMAIL)
+			.name("New User")
+			.passwordHash(passwordEncoder.encode(password))
+			.status(status)
+			.build();
+	}
+
+	private void assertInvalidCredentials(Runnable action) {
+		assertThatThrownBy(action::run)
+			.isInstanceOfSatisfying(
+				UserCommandException.class,
+				exception -> {
+					assertThat(exception.getErrorCode())
+						.isEqualTo("AUTH_INVALID_CREDENTIALS");
+					assertThat(exception.getMessage())
+						.isEqualTo("Invalid email or password");
+				}
+			);
 	}
 
 	private User withGeneratedId(User user) {
