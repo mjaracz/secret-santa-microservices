@@ -18,7 +18,7 @@ must remain idempotent and messages must keep their stable command/event identif
 
 **Technology stack**:
 - Spring Boot 4.0.2 
-- Java 25 
+- Java 25; `group-service` is experimentally converted to Kotlin 2.3.21
 - Kafka
 - PostgreSQL 
 - MongoDB
@@ -155,6 +155,39 @@ mvn spring-boot:run
 ```
 
 ## Available endpoints
+
+The API Gateway listens on port `8090` in the local profile. Login returns a
+short-lived JWT. Send it as a bearer token when calling `GET /api/groups/me`;
+the gateway takes the user ID from the token subject, so the request does not
+accept a user ID in its path or body.
+
+### Login
+```HTTP
+POST /api/auth/login HTTP/1.1
+Content-Type: application/json
+
+{
+    "email": "tom@example.com",
+    "password": "<account-password>"
+}
+```
+
+On success the response contains `accessToken`, `tokenType` (`Bearer`),
+`expiresInSeconds` (`900`) and `userId`.
+
+### Get My Groups
+```HTTP
+GET /api/groups/me HTTP/1.1
+Authorization: Bearer <accessToken>
+```
+
+The response is a `CommandResponse`; its `data` field contains the
+`MY_GROUPS_FETCHED` event and a `groups` array. A missing or invalid token
+returns `401 Unauthorized`.
+
+At present, this is the only route that requires a JWT. Login and registration
+are public, and the existing group write routes are also permitted by the
+current Gateway route policy.
 
 ### Create User
 ```HTTP

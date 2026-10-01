@@ -11,11 +11,11 @@
 **Type:** `Pure Event-Driven Worker`
 
 **Responsibility:**  
-Domain service responsible for user identity, authentication, and profile management. Processes commands via Kafka, applies business logic, persists to PostgreSQL, and publishes domain events.
+Domain service responsible for user registration and credential validation. It processes Kafka commands, persists users to PostgreSQL, and publishes domain events or command replies. JWTs are issued and validated by the API Gateway.
 
 **Key Characteristics:**
 - ✅ **Pure worker** - Kafka consumer/producer only
-- ✅ **Domain logic** - User registration, authentication, profile management
+- ✅ **Domain logic** - User registration and credential authentication
 - ✅ **Database per service** - Isolated PostgreSQL instance
 - ✅ **Event-driven** - Consumes commands, publishes domain events
 - ❌ **No REST endpoints** - Pure asynchronous processing
@@ -38,7 +38,7 @@ PostgreSQL (persist user)
     ↓
 Kafka (user.events topic)
     ↓
-UserCreatedEvent → Other workers
+Correlated UserCreatedEvent → API Gateway
 ```
 
 ---
@@ -60,18 +60,47 @@ When generating from [start.spring.io](https://start.spring.io):
 
 | Category | Dependency Name | Identifier | Purpose |
 |----------|----------------|------------|---------|
-| **Messaging** | Spring for Apache Kafka | `kafka` | Event consumer/producer |
-| **SQL** | Spring Data JPA | `data-jpa` | ORM for PostgreSQL |
+| **Messaging** | Spring Kafka | `spring-boot-starter-kafka` | Consume commands and publish events |
+| **SQL** | Spring Data JPA | `spring-boot-starter-data-jpa` | ORM for PostgreSQL |
 | **SQL** | PostgreSQL Driver | `postgresql` | Database connectivity |
-| **Developer Tools** | Lombok | `lombok` | Reduce boilerplate (@Data, @Builder) |
+| **Validation** | Spring Boot Validation | `spring-boot-starter-validation` | Validate registration commands |
+| **Migrations** | Spring Boot Flyway | `spring-boot-starter-flyway` | Apply database schema migrations |
+| **Security** | Spring Security Crypto | `spring-security-crypto` | BCrypt password hashing and matching |
+| **Shared contracts** | `shareable-common` | `com.secretsanta:shareable-common` | Commands and events |
+| **Shared transport** | `shareable-infrastructure` | `com.secretsanta:shareable-infrastructure` | `KafkaServiceBus` |
+| **Developer Tools** | Lombok | `lombok` | Reduce boilerplate |
 
 ### Maven Dependencies (pom.xml)
 ```xml
 <dependencies>
-    <!-- Spring Kafka -->
+    <!-- Kafka command consumer and event producer -->
     <dependency>
-        <groupId>org.springframework.kafka</groupId>
-        <artifactId>spring-kafka</artifactId>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-kafka</artifactId>
+    </dependency>
+
+    <!-- Request validation and database migrations -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-flyway</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.flywaydb</groupId>
+        <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.flywaydb</groupId>
+        <artifactId>flyway-database-postgresql</artifactId>
+    </dependency>
+
+    <!-- BCrypt password handling -->
+    <dependency>
+        <groupId>org.springframework.security</groupId>
+        <artifactId>spring-security-crypto</artifactId>
     </dependency>
 
     <!-- Spring Data JPA -->
@@ -93,6 +122,18 @@ When generating from [start.spring.io](https://start.spring.io):
         <artifactId>lombok</artifactId>
         <optional>true</optional>
     </dependency>
+
+    <!-- Contracts and shared Kafka transport -->
+    <dependency>
+        <groupId>com.secretsanta</groupId>
+        <artifactId>shareable-common</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+        <groupId>com.secretsanta</groupId>
+        <artifactId>shareable-infrastructure</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </dependency>
 </dependencies>
 ```
 
@@ -104,39 +145,50 @@ When generating from [start.spring.io](https://start.spring.io):
 
 ## 🎯 Domain Responsibility
 
-### Core Business Logic
-- **User Registration** - Create new accounts with email uniqueness validation
-- **Profile Management** - Update name, email, password
-- **Authentication** - Credential validation, token issuance (optional)
-- **Account Deletion** - GDPR-compliant removal with cascade cleanup
-- **Email Verification** - Send verification codes (via Notification Service)
+### Implemented operations
+- **User Registration** - Create accounts with normalized email uniqueness and a BCrypt password hash
+- **Authentication** - Validate credentials and return an authentication reply; token issuance belongs to the API Gateway
 
 ### Business Rules
 - Email must be unique (database constraint)
 - Passwords hashed with BCrypt (never plaintext)
-- Deleted users trigger cascade events (remove from groups, wishlists)
+- New accounts start in `PENDING_VERIFICATION`; the current login handler only rejects accounts in `DELETED` status
 - User IDs are UUIDs for global uniqueness
+
+### Authentication request flow
+
+The Gateway sends `AuthenticateUserCommand` on `user.commands`. Before
+publishing it, the Gateway encrypts the submitted password with the User
+Service's RSA public key. The worker decrypts it with its private key, finds
+the user by normalized email, and compares the password with the stored BCrypt
+hash. A successful request publishes `UserAuthenticatedEvent` with the user
+ID and the command's `commandId` as `correlationId`. Invalid credentials
+produce a generic `AUTH_INVALID_CREDENTIALS` failure, regardless of whether
+the email or password was incorrect. The Gateway uses the success reply to
+issue the JWT; the User Service does not create or sign tokens.
 
 ---
 
 ## 📨 Event Production
 
-Publishes **domain events** to `user.events`:
+Publishes domain events and request-reply events to `user.events`:
 
 | Event Type | Trigger | Consumed By |
 |------------|---------|-------------|
-| `UserCreatedEvent` | Registration completed | Notification Service (welcome email), Group Service (cache) |
-| `UserUpdatedEvent` | Profile modified | Group Service (update cache) |
-| `UserDeletedEvent` | Account deleted | Group Service, Wishlist Service (cascade cleanup) |
+| `UserCreatedEvent` | Registration completed | API Gateway (registration request-reply) |
+| `UserAuthenticatedEvent` | Credentials validated | API Gateway (login request-reply) |
 
 **Event Schema:**
 ```json
 {
-  "eventType": "UserCreatedEvent",
+  "eventId": "<event-uuid>",
+  "timestamp": 1790798400000,
+  "eventType": "USER_CREATED",
+  "correlationId": "<command-uuid>",
   "userId": "550e8400-e29b-41d4-a716-446655440000",
   "email": "user@example.com",
   "name": "John Doe",
-  "timestamp": 1707562800000
+  "status": "PENDING_VERIFICATION"
 }
 ```
 
@@ -149,30 +201,15 @@ Listens to Kafka topics:
 | Topic | Event | Action |
 |-------|-------|--------|
 | `user.commands` | CreateUserCommand | Validate → Hash password → Save to DB → Publish UserCreatedEvent |
-| `user.commands` | UpdateUserCommand | Validate → Update DB → Publish UserUpdatedEvent |
-| `user.commands` | DeleteUserCommand | Delete user → Publish UserDeletedEvent |
+| `user.commands` | AuthenticateUserCommand | Decrypt password → Compare BCrypt hash → Publish UserAuthenticatedEvent or generic failure |
 
-**Kafka Listener Example:**
-```java
-@Component
-@RequiredArgsConstructor
-@Slf4j
-public class UserCommandListener {
-    
-    private final UserService userService;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
-    
-    @KafkaListener(topics = "user.commands", groupId = "user-service-group")
-    public void handleCreateUser(CreateUserCommand command) {
-        log.info("Processing CreateUserCommand: {}", command.getEmail());
-        
-        User user = userService.createUser(command);
-        
-        kafkaTemplate.send("user.events", user.getId(), 
-            new UserCreatedEvent(user.getId(), user.getEmail(), user.getName()));
-    }
-}
-```
+`UserCommandListener` is a Kafka adapter: it registers handlers with
+`KafkaServiceBus`, deserializes incoming command messages, delegates to
+`UserService`, and publishes events with the command ID as the correlation ID.
+The current listener registers `CreateUserCommand` and
+`AuthenticateUserCommand`; the other command classes in the shared library are
+not yet wired to handlers. The Gateway consumes these replies and completes
+the waiting HTTP request.
 
 ---
 
@@ -182,46 +219,64 @@ public class UserCommandListener {
 **Port:** `5432` (in docker-compose)
 ```sql
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email VARCHAR(255) UNIQUE NOT NULL,
+    id UUID PRIMARY KEY,
+    email VARCHAR(320) UNIQUE NOT NULL,
+    email_normalized VARCHAR(320) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
-    password_hash VARCHAR(255),
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    password_hash VARCHAR(255) NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'PENDING_VERIFICATION'
+        CHECK (status IN ('PENDING_VERIFICATION', 'ACTIVE', 'DELETED')),
+    email_verified_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    version BIGINT NOT NULL DEFAULT 0
 );
-
--- Indexes
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_created_at ON users(created_at DESC);
 ```
 
 **Entity Example:**
 ```java
 @Entity
 @Table(name = "users")
-@Data
+@Getter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class User {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    private String id;
+    @EqualsAndHashCode.Include
+    private UUID id;
     
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false, unique = true, length = 320)
     private String email;
+
+    @Column(name = "email_normalized", nullable = false, unique = true, length = 320)
+    private String emailNormalized;
     
     @Column(nullable = false)
     private String name;
     
-    @Column(name = "password_hash")
+    @Column(name = "password_hash", nullable = false)
     private String passwordHash;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private UserAccountStatus status;
+
+    @Column(name = "email_verified_at")
+    private Instant emailVerifiedAt;
     
-    @Column(name = "created_at")
-    private LocalDateTime createdAt;
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false)
+    private Instant createdAt;
     
-    @Column(name = "updated_at")
-    private LocalDateTime updatedAt;
+    @UpdateTimestamp
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
+    @Version
+    private long version;
 }
 ```
 
@@ -260,49 +315,27 @@ public class User {
      --broker-list localhost:9092 \
      --topic user.commands
    
-   # Then paste JSON:
-   {"commandType":"CreateUserCommand","email":"test@example.com","name":"John"}
+   # Then paste a command with its required BaseCommand metadata:
+   {"commandId":"9c5b8c53-cb6d-4650-87f5-4e6bb51b1d22","timestamp":1790798400000,"commandType":"CREATE_USER","email":"test@example.com","name":"John Doe","password":"<account-password>"}
 ```
 
 ---
 
 ## ⚙️ Configuration
 
-`application.yml`:
-```yaml
-server:
-  port: 8081  # Internal only (not exposed)
+The worker reads its database and Kafka settings from environment variables.
+The authentication private key is supplied separately and must match the
+public key configured in API Gateway.
 
-spring:
-  application:
-    name: user-service
+| Variable | Meaning |
+|----------|---------|
+| `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | User Service PostgreSQL connection |
+| `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_CONSUMER_GROUP_ID` | Kafka connection and worker consumer group |
+| `KAFKA_TOPIC_USER_COMMANDS`, `KAFKA_TOPIC_USER_EVENTS` | Command and reply topic names |
+| `USER_AUTH_PRIVATE_KEY_BASE64` | Base64-encoded PKCS#8 RSA private key used to decrypt login passwords |
 
-  datasource:
-    url: jdbc:postgresql://localhost:5432/user_db
-    username: user_admin
-    password: user_pass
-    driver-class-name: org.postgresql.Driver
-
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: true
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-
-  kafka:
-    bootstrap-servers: localhost:9092
-    consumer:
-      group-id: user-service-group
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: "*"
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-```
+Store the private key in the deployment's secret store. The worker has no REST
+controller; HTTP login requests enter through API Gateway.
 
 ---
 
@@ -320,7 +353,6 @@ spring:
 
 ## 🔮 Future Enhancements
 
-- [ ] Password hashing (BCrypt/Argon2)
 - [ ] Email verification workflow
 - [ ] OAuth2 integration (Google, GitHub)
 - [ ] User avatar storage (S3)
