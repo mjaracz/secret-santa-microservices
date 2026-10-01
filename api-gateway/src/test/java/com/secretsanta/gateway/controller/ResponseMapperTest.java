@@ -38,7 +38,7 @@ class ResponseMapperTest {
     }
 
     @Test
-    void mapsMissingErrorCodeToUnprocessableEntity() {
+    void mapsMissingErrorCodeToUnprocessableContent() {
         CommandResponse response = CommandResponse.failure(
                 "command-123",
                 null,
@@ -50,7 +50,7 @@ class ResponseMapperTest {
                 ResponseMapper.toResponseEntity(response);
 
         assertThat(result.getStatusCode())
-                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                .isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT);
     }
 
     @Test
