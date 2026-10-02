@@ -33,7 +33,7 @@ final class ResponseMapper {
 
     private static HttpStatus resolveFailureStatus(String errorCode) {
         if (errorCode == null) {
-            return HttpStatus.UNPROCESSABLE_ENTITY;
+            return HttpStatus.UNPROCESSABLE_CONTENT;
         }
 
         return switch (errorCode) {
@@ -41,7 +41,7 @@ final class ResponseMapper {
             case EMAIL_EXISTS_ERROR_CODE -> HttpStatus.CONFLICT;
             case INTERNAL_ERROR_CODE -> HttpStatus.INTERNAL_SERVER_ERROR;
             case REQUEST_TIMEOUT_ERROR_CODE -> HttpStatus.GATEWAY_TIMEOUT;
-            default -> HttpStatus.UNPROCESSABLE_ENTITY;
+            default -> HttpStatus.UNPROCESSABLE_CONTENT;
         };
     }
 }

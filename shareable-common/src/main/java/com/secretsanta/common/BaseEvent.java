@@ -8,7 +8,10 @@ import com.secretsanta.common.group.events.GroupCreatedEvent;
 import com.secretsanta.common.group.events.GroupDeletedEvent;
 import com.secretsanta.common.group.events.GroupUpdatedEvent;
 import com.secretsanta.common.group.events.MemberAddedEvent;
+import com.secretsanta.common.group.events.MyGroupsFetchedEvent;
 import com.secretsanta.common.user.events.UserCreatedEvent;
+import com.secretsanta.common.user.events.UserAuthenticatedEvent;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -29,12 +32,14 @@ import java.util.UUID;
 )
 @JsonSubTypes({
 		@JsonSubTypes.Type(value = UserCreatedEvent.class, name = "USER_CREATED"),
+		@JsonSubTypes.Type(value = UserAuthenticatedEvent.class, name = "USER_AUTHENTICATED"),
 		@JsonSubTypes.Type(value = GroupCreatedEvent.class, name = "GROUP_CREATED"),
 		@JsonSubTypes.Type(value = GroupUpdatedEvent.class, name = "GROUP_UPDATED"),
+		@JsonSubTypes.Type(value = MyGroupsFetchedEvent.class, name ="MY_GROUPS_FETCHED"),
 		@JsonSubTypes.Type(value = GroupDeletedEvent.class, name = "GROUP_DELETED"),
 		@JsonSubTypes.Type(value = MemberAddedEvent.class, name = "MEMBER_ADDED"),
 		@JsonSubTypes.Type(value = DrawCompletedEvent.class, name = "DRAW_COMPLETED"),
-		@JsonSubTypes.Type(value = CommandFailedEvent.class, name = "COMMAND_FAILED")
+		@JsonSubTypes.Type(value = CommandFailedEvent.class, name = "COMMAND_FAILED"),
 })
 public class BaseEvent {
 

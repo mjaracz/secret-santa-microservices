@@ -1,15 +1,9 @@
-PLANNING.md
-CLAUDE.md
-OVERVIEW.md
-AGENTS.md
-
 **/application-local.properties
 
 **/.env
 
 .idea/
 .vscode/
-.claude/
 **/target
 
 **/.mvn
